@@ -13,7 +13,7 @@ export async function handleConversationHandoff(
     const taskAttributes = {
       type: 'conversation',
       conversationSid: conversationSid,
-      name: 'Jorge Quevedo',
+      name: 'whatsapp:+5511976932682',
       channel_type: 'chat',
       direction: 'inbound',
       handoff_reason: handoffData.reason || 'customer_request',

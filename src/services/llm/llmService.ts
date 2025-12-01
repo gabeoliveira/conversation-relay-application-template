@@ -336,11 +336,41 @@ export class LLMService extends EventEmitter {
 
   async setup(message: any) {
    // Handle setup message
-  const userContext = {
-    customerPhone: message.from
-  }
-   const userContextMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = { role: "system", content: JSON.stringify(userContext)};
+   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+   console.log('🤖 [LLMService] Processing setup message');
+   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+   // Extract customerPhone from different message structures (voice uses .from, conversations use .customerPhone)
+   const rawPhone = message.from || message.customerPhone;
+   // Remove 'whatsapp:' prefix if present
+   const cleanPhone = rawPhone?.replace(/^whatsapp:/, '');
+
+   console.log('📱 Customer Phone:', cleanPhone || 'N/A');
+
+   // Build user context with phone and any custom parameters
+   const userContext: Record<string, any> = {
+     customerPhone: cleanPhone
+   };
+
+   // Include custom parameters if they exist
+   if (message.customParameters) {
+     userContext.customParameters = message.customParameters;
+     console.log('✅ Custom parameters included in LLM context:');
+     console.log(JSON.stringify(message.customParameters, null, 2));
+   } else {
+     console.log('ℹ️  No custom parameters provided');
+   }
+
+   const userContextMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
+     role: "system",
+     content: `Call Context: ${JSON.stringify(userContext, null, 2)}`
+   };
+
    this.messages.push(userContextMessage);
+
+   console.log('\n📤 System message sent to LLM:');
+   console.log(userContextMessage.content);
+   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   }
 
   async executeToolCall(

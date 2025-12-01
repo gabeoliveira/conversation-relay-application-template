@@ -30,6 +30,20 @@ export function initializeWebSocketHandlers(wss: WebSocketServer) {
             }
             break;
           case "setup":
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('🔌 [WebSocket] Setup message received from Twilio');
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('📞 Call SID:', parsedMessage.callSid);
+            console.log('📍 Session ID:', parsedMessage.sessionId);
+            console.log('📱 From:', parsedMessage.from);
+            console.log('📲 To:', parsedMessage.to);
+            if (parsedMessage.customParameters) {
+              console.log('📦 Custom Parameters received:');
+              console.log(JSON.stringify(parsedMessage.customParameters, null, 2));
+            } else {
+              console.log('📦 Custom Parameters: None');
+            }
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
             llmService.setup(parsedMessage);
             break;
           case "error":

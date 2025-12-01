@@ -10,6 +10,7 @@ const configSchema = z.object({
   // Twilio Configuration
   TWILIO_ACCOUNT_SID: z.string().min(1, "Twilio Account SID is required"),
   TWILIO_AUTH_TOKEN: z.string().min(1, "Twilio Auth Token is required"),
+  TWILIO_PHONE_NUMBER: z.string().min(1, "Twilio Phone Number is required"),
   TWILIO_WORKFLOW_SID: z.string().min(1, "Twilio Workflow SID is required"),
   TWILIO_WORKSPACE_SID: z.string().min(1, "Twilio Workspace SID is required"),
 
@@ -55,6 +56,7 @@ export const config = {
   twilio: {
     accountSid: parsedConfig.TWILIO_ACCOUNT_SID,
     authToken: parsedConfig.TWILIO_AUTH_TOKEN,
+    phoneNumber: parsedConfig.TWILIO_PHONE_NUMBER,
     workflowSid: parsedConfig.TWILIO_WORKFLOW_SID,
     workspaceSid: parsedConfig.TWILIO_WORKSPACE_SID,
     voiceIntelligenceSid: parsedConfig.TWILIO_VOICE_INTELLIGENCE_SID,

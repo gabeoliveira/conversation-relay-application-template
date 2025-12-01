@@ -56,6 +56,7 @@ export type SetupMessage = {
   callStatus: string;
   accountSid: string;
   applicationSid: string;
+  customParameters?: Record<string, string>;
 };
 
 export type PromptMessage = {
