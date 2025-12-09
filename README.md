@@ -58,27 +58,27 @@ Open `.env` and configure the following variables:
 
 #### Required Variables
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `TWILIO_ACCOUNT_SID` | Your Twilio Account SID | `ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
-| `TWILIO_AUTH_TOKEN` | Your Twilio Auth Token | `your_auth_token_here` |
-| `TWILIO_PHONE_NUMBER` | Your Twilio phone number | `+1234567890` |
-| `TWILIO_VOICE_INTELLIGENCE_SID` | Voice Intelligence SID for call transcription | `GAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
-| `TWILIO_CONVERSATION_SERVICE_SID` | Conversations Service SID | `ISXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
-| `TWILIO_WORKFLOW_SID` | TaskRouter Workflow SID for Flex | `WWXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
-| `TWILIO_WORKSPACE_SID` | TaskRouter Workspace SID for Flex | `WSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
-| `OPENAI_API_KEY` | Your OpenAI API Key | `sk-...` |
+| Variable                          | Description                                   | Example                              |
+| --------------------------------- | --------------------------------------------- | ------------------------------------ |
+| `TWILIO_ACCOUNT_SID`              | Your Twilio Account SID                       | `ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `TWILIO_AUTH_TOKEN`               | Your Twilio Auth Token                        | `your_auth_token_here`               |
+| `TWILIO_PHONE_NUMBER`             | Your Twilio phone number                      | `+1234567890`                        |
+| `TWILIO_VOICE_INTELLIGENCE_SID`   | Voice Intelligence SID for call transcription | `GAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `TWILIO_CONVERSATION_SERVICE_SID` | Conversations Service SID                     | `ISXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `TWILIO_WORKFLOW_SID`             | TaskRouter Workflow SID for Flex              | `WWXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `TWILIO_WORKSPACE_SID`            | TaskRouter Workspace SID for Flex             | `WSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `OPENAI_API_KEY`                  | Your OpenAI API Key                           | `sk-...`                             |
 
 #### Optional Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NGROK_DOMAIN` | Your ngrok domain (without https://) | - |
-| `WELCOME_GREETING` | Message played/sent to users on first contact | - |
-| `TWILIO_SYNC_SERVICE_SID` | Sync Service SID for typing indicators feature | - |
-| `GOOGLESHEETS_SPREADSHEET_ID` | Google Sheets ID for tools integration | - |
-| `GOOGLE_CALENDAR_ID` | Google Calendar ID for booking tools | - |
-| `PORT` | Local server port | `3000` |
+| Variable                      | Description                                    | Default |
+| ----------------------------- | ---------------------------------------------- | ------- |
+| `NGROK_DOMAIN`                | Your ngrok domain (without https://)           | -       |
+| `WELCOME_GREETING`            | Message played/sent to users on first contact  | -       |
+| `TWILIO_SYNC_SERVICE_SID`     | Sync Service SID for typing indicators feature | -       |
+| `GOOGLESHEETS_SPREADSHEET_ID` | Google Sheets ID for tools integration         | -       |
+| `GOOGLE_CALENDAR_ID`          | Google Calendar ID for booking tools           | -       |
+| `PORT`                        | Local server port                              | `3000`  |
 
 ### 4. Configure Twilio Webhooks
 
@@ -102,6 +102,7 @@ Open `.env` and configure the following variables:
 #### For Typing Indicators (Optional)
 
 If using typing indicators, configure an additional webhook on your **Messaging Service** or **WhatsApp Sender**:
+
 - **Incoming Message Webhook**: `https://[your-ngrok-domain].ngrok.app/api/conversations/whatsapp-incoming`
 
 ### 5. Run the app
@@ -116,7 +117,7 @@ npm run dev
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Incoming Request                         │
+│                         Incoming Request                        │
 └─────────────────────────────────────────────────────────────────┘
                                   │
                     ┌─────────────┴─────────────┐
@@ -167,6 +168,7 @@ The system supports seamless handoff to human agents via Twilio Flex for both ch
 ### Handoff for Voice
 
 When handoff occurs during a voice call:
+
 - The `humanAgentHandoff` tool emits an event
 - The WebSocket service sends an `end` message with handoff data
 - ConversationRelay transfers the call to Flex using the configured workflow
@@ -174,6 +176,7 @@ When handoff occurs during a voice call:
 ### Handoff for Messaging
 
 When handoff occurs during a messaging conversation ([conversationHandoff.ts](src/utils/conversationHandoff.ts)):
+
 1. A Flex Interaction is created via the Interactions API
 2. Bot webhooks are removed from the conversation (identified by `NGROK_DOMAIN`)
 3. The conversation is marked as handed off in its attributes
@@ -202,19 +205,19 @@ This ensures typing indicators are only shown when the bot is handling the conve
 
 ### Voice Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/incoming-call` | POST | Process incoming voice call, initiates ConversationRelay |
-| `/api/action` | POST | Handle Twilio Studio connect actions (human agent handoff) |
+| Endpoint             | Method | Description                                                |
+| -------------------- | ------ | ---------------------------------------------------------- |
+| `/api/incoming-call` | POST   | Process incoming voice call, initiates ConversationRelay   |
+| `/api/action`        | POST   | Handle Twilio Studio connect actions (human agent handoff) |
 
 ### Messaging Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/conversations/incoming-message` | POST | Process incoming Conversations messages |
-| `/api/conversations/conversation-events` | POST | Handle conversation events (participant added/removed) |
-| `/api/conversations/whatsapp-incoming` | POST | Process incoming WhatsApp messages for typing indicators |
-| `/api/conversations/message-status` | POST | Handle message delivery receipts |
+| Endpoint                                 | Method | Description                                              |
+| ---------------------------------------- | ------ | -------------------------------------------------------- |
+| `/api/conversations/incoming-message`    | POST   | Process incoming Conversations messages                  |
+| `/api/conversations/conversation-events` | POST   | Handle conversation events (participant added/removed)   |
+| `/api/conversations/whatsapp-incoming`   | POST   | Process incoming WhatsApp messages for typing indicators |
+| `/api/conversations/message-status`      | POST   | Handle message delivery receipts                         |
 
 ## Controllers
 
@@ -235,6 +238,7 @@ This ensures typing indicators are only shown when the bot is handling the conve
 ### LLMService
 
 Manages interactions with OpenAI's language model ([llmService.ts](src/services/llm/llmService.ts)):
+
 - Supports both streaming (voice) and non-streaming (messaging) responses
 - Handles tool calls and function execution
 - Emits events for handoff, conversation end, and completion
@@ -246,6 +250,7 @@ Real-time communication for voice calls ([websocketService.ts](src/services/llm/
 ### Sync Service
 
 Manages active bot conversations in Twilio Sync for typing indicators ([syncService.ts](src/utils/syncService.ts)):
+
 - `storeActiveConversation`: Stores customer phone when bot session starts
 - `getActiveConversation`: Checks if customer has active bot session
 - `removeActiveConversation`: Removes entry on handoff or conversation end
@@ -254,31 +259,31 @@ Manages active bot conversations in Twilio Sync for typing indicators ([syncServ
 
 The LLM can use various tools for business logic:
 
-| Tool | Description |
-|------|-------------|
-| `humanAgentHandoff` | Transfers to a human agent |
-| `switchLanguage` | Changes conversation language |
-| `identifyUser` | Looks up user in spreadsheet |
-| `bookDriver` | Books a driver using calendar |
-| `addSurveyResponse` | Stores survey answers |
-| `checkCardDelivery` | Checks card delivery status |
-| `checkIncreaseLimit` | Checks credit limit eligibility |
-| `checkPendingBill` | Checks for pending bills |
-| `checkHsaAccount` | Checks HSA account status |
-| `checkPaymentOptions` | Gets available payment options |
-| `troubleshootLoginIssues` | Helps resolve login issues |
-| `searchCommonMedicalTerms` | Searches medical terms |
+| Tool                       | Description                     |
+| -------------------------- | ------------------------------- |
+| `humanAgentHandoff`        | Transfers to a human agent      |
+| `switchLanguage`           | Changes conversation language   |
+| `identifyUser`             | Looks up user in spreadsheet    |
+| `bookDriver`               | Books a driver using calendar   |
+| `addSurveyResponse`        | Stores survey answers           |
+| `checkCardDelivery`        | Checks card delivery status     |
+| `checkIncreaseLimit`       | Checks credit limit eligibility |
+| `checkPendingBill`         | Checks for pending bills        |
+| `checkHsaAccount`          | Checks HSA account status       |
+| `checkPaymentOptions`      | Gets available payment options  |
+| `troubleshootLoginIssues`  | Helps resolve login issues      |
+| `searchCommonMedicalTerms` | Searches medical terms          |
 
 See [src/services/llm/tools/](src/services/llm/tools/) for implementations.
 
 ## Scripts
 
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start development server with hot reload |
-| `npm run build` | Compile TypeScript to JavaScript |
-| `npm start` | Run production build |
-| `npm test` | Run unit tests |
+| Script          | Description                              |
+| --------------- | ---------------------------------------- |
+| `npm run dev`   | Start development server with hot reload |
+| `npm run build` | Compile TypeScript to JavaScript         |
+| `npm start`     | Run production build                     |
+| `npm test`      | Run unit tests                           |
 
 ## Project Structure
 

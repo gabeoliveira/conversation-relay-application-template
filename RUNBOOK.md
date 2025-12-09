@@ -254,19 +254,46 @@ This section highlights where to make common customizations. Each entry shows th
 
 ### 🛠️ Tools & Integrations
 
-**Tool Definitions** - [src/services/llm/tools/](src/services/llm/tools/)
-- **What:** Functions the AI can call to perform actions
+**Tool Definitions** - [src/services/llm/tools/toolDefinitions.ts](src/services/llm/tools/toolDefinitions.ts)
+- **What:** OpenAI function definitions that tell the LLM what tools are available
+- **Format:** Array of `LLMToolDefinition` objects with function name, description, and parameters
+- **Line 15:** `toolDefinitions` array - add your tool definition here
+
+**Tool Implementations** - [src/services/llm/tools/](src/services/llm/tools/)
+- **What:** Functions that execute when the AI calls a tool
 - **Examples:**
   - [humanAgentHandoff.ts](src/services/llm/tools/humanAgentHandoff.ts) - Transfer to Flex agent
   - [checkCardDelivery.ts](src/services/llm/tools/checkCardDelivery.ts) - Check delivery status
   - [bookDriver.ts](src/services/llm/tools/bookDriver.ts) - Schedule appointments
   - [identifyUser.ts](src/services/llm/tools/identifyUser.ts) - User lookup
 
-**Add New Tool:**
-1. Create new file in `src/services/llm/tools/`
-2. Export tool definition (OpenAI function format)
-3. Export execute function
-4. Import in [src/services/llm/tools/index.ts](src/services/llm/tools/index.ts)
+**LLM Service Integration** - [src/services/llm/llmService.ts](src/services/llm/llmService.ts)
+- **What:** Connects tool definitions to their implementations
+- **Lines 16-31:** Import your tool's execute function
+- **Lines 391-403:** Map tool name to execute function in `toolFunction` object
+
+**Add New Tool (4 steps):**
+1. **Create tool file** in `src/services/llm/tools/myNewTool.ts`
+   - Export an async execute function (e.g., `export async function myNewTool(args: {...}): Promise<string>`)
+2. **Add definition** to `toolDefinitions` array in [toolDefinitions.ts](src/services/llm/tools/toolDefinitions.ts)
+   ```typescript
+   {
+     type: 'function',
+     function: {
+       name: 'my_new_tool',
+       description: 'What this tool does',
+       parameters: {
+         type: 'object',
+         properties: { /* your params */ },
+         required: ['requiredParam']
+       }
+     }
+   }
+   ```
+3. **Export** from [index.ts](src/services/llm/tools/index.ts): `export * from './myNewTool';`
+4. **Register** in [llmService.ts](src/services/llm/llmService.ts):
+   - Import: `import { myNewTool } from "./tools";` (line ~30)
+   - Add to `toolFunction` map: `my_new_tool: myNewTool` (line ~402)
 
 ---
 
