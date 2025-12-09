@@ -16,6 +16,9 @@ const configSchema = z.object({
 
   TWILIO_VOICE_INTELLIGENCE_SID: z.string().min(1,"Twilio Voice Intelligence SID is required"),
   TWILIO_CONVERSATION_SERVICE_SID: z.string().min(1, "Twilio Conversations Service is required"),
+
+  // Optional: Sync Service for typing indicators feature
+  TWILIO_SYNC_SERVICE_SID: z.string().optional(),
   
   // Ngrok Configuration
   NGROK_DOMAIN: z.string().optional(),
@@ -39,7 +42,7 @@ const configSchema = z.object({
 });
 
 // Validate and parse the environment variables
-let parsedConfig: { TWILIO_ACCOUNT_SID: string; TWILIO_AUTH_TOKEN: string; TWILIO_WORKFLOW_SID: string; TWILIO_WORKSPACE_SID: string; TWILIO_VOICE_INTELLIGENCE_SID: string; TWILIO_CONVERSATION_SERVICE_SID: string; WELCOME_GREETING?: string | undefined; PORT: string; NGROK_DOMAIN?: string | undefined; SPEECH_KEY?: string | undefined; SPEECH_REGION?: string | undefined; OPENAI_API_KEY?: string | undefined; GOOGLESHEETS_SPREADSHEET_ID?: string | undefined; GOOGLE_CALENDAR_ID?: string | undefined};
+let parsedConfig: { TWILIO_ACCOUNT_SID: string; TWILIO_AUTH_TOKEN: string; TWILIO_PHONE_NUMBER: string; TWILIO_WORKFLOW_SID: string; TWILIO_WORKSPACE_SID: string; TWILIO_VOICE_INTELLIGENCE_SID: string; TWILIO_CONVERSATION_SERVICE_SID: string; TWILIO_SYNC_SERVICE_SID?: string | undefined; WELCOME_GREETING?: string | undefined; PORT: string; NGROK_DOMAIN?: string | undefined; SPEECH_KEY?: string | undefined; SPEECH_REGION?: string | undefined; OPENAI_API_KEY?: string | undefined; GOOGLESHEETS_SPREADSHEET_ID?: string | undefined; GOOGLE_CALENDAR_ID?: string | undefined};
 
 try {
   parsedConfig = configSchema.parse(process.env);
@@ -61,7 +64,8 @@ export const config = {
     workspaceSid: parsedConfig.TWILIO_WORKSPACE_SID,
     voiceIntelligenceSid: parsedConfig.TWILIO_VOICE_INTELLIGENCE_SID,
     welcomeGreeting: parsedConfig.WELCOME_GREETING,
-    conversationServiceSid: parsedConfig.TWILIO_CONVERSATION_SERVICE_SID
+    conversationServiceSid: parsedConfig.TWILIO_CONVERSATION_SERVICE_SID,
+    syncServiceSid: parsedConfig.TWILIO_SYNC_SERVICE_SID
   },
   ngrok: {
     domain: parsedConfig.NGROK_DOMAIN

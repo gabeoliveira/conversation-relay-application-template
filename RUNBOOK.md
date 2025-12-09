@@ -293,9 +293,193 @@ This section highlights where to make common customizations. Each entry shows th
 
 ---
 
+---
+
+## Phase 6: Messaging Integration (Optional - 20 min)
+
+This phase adds WhatsApp/SMS messaging capabilities to your AI Assistant using Twilio Conversations.
+
+### Prerequisites for Messaging
+
+- [ ] WhatsApp Sender or Messaging Service configured in Twilio
+- [ ] Twilio Conversations Service created
+- [ ] (Optional) Twilio Sync Service for typing indicators
+
+---
+
+### Step 7: Gather Messaging SIDs
+
+Add these to your `.env` file:
+
+| Variable | Where to Find | Example |
+|----------|---------------|---------|
+| `TWILIO_CONVERSATION_SERVICE_SID` | Twilio Console > Conversations > Services | `ISxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
+| `TWILIO_WORKSPACE_SID` | Twilio Console > TaskRouter > Workspaces | `WSxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
+| `TWILIO_SYNC_SERVICE_SID` (optional) | Twilio Console > Sync > Services | `ISxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
+
+**Note:** `TWILIO_SYNC_SERVICE_SID` is only needed for WhatsApp typing indicators.
+
+---
+
+### Step 8: Configure Conversations Webhook
+
+1. Go to [Twilio Console > Conversations > Services](https://console.twilio.com/us1/develop/conversations/manage/services)
+2. Select your Conversations Service
+3. Click **Webhooks** in the left menu
+4. Configure **Post-webhooks**:
+   - **Post-Event URL:** `https://[your-ngrok-domain].ngrok.app/api/conversations/incoming-message`
+   - **Events:** Select `onMessageAdded`
+5. Click **Save**
+
+**Validation:** Webhook saved without errors.
+
+---
+
+### Step 9: Configure WhatsApp Sender (for Typing Indicators)
+
+If using typing indicators, configure an additional webhook:
+
+1. Go to [Twilio Console > Messaging > Senders > WhatsApp Senders](https://console.twilio.com/us1/develop/sms/senders/whatsapp-senders)
+2. Select your WhatsApp Sender
+3. Under **Endpoint Configuration**:
+   - **Incoming Message Webhook:** `https://[your-ngrok-domain].ngrok.app/api/conversations/whatsapp-incoming`
+   - **HTTP Method:** `POST`
+4. Click **Save**
+
+**Note:** This webhook runs in parallel with Conversations to send typing indicators immediately.
+
+---
+
+### Step 10: Test Messaging
+
+1. **Restart your development server** to load new environment variables:
+   ```bash
+   # Press Ctrl+C to stop, then:
+   npm run dev
+   ```
+
+2. **Send a WhatsApp message** to your Twilio WhatsApp number
+
+3. **Expected behavior:**
+   - (If Sync configured) Typing indicator appears while bot processes
+   - AI assistant responds to your message
+   - Conversation continues naturally
+
+**Test scenarios:**
+- Send a greeting: "Hello!"
+- Ask a question: "What can you help me with?"
+- Request human handoff: "I need to speak to an agent"
+
+**Troubleshooting:**
+- **No response:** Check Conversations webhook URL is correct
+- **Typing indicator not showing:** Verify `TWILIO_SYNC_SERVICE_SID` is set and Sync Map is created
+- **Handoff not working:** Check `TWILIO_WORKFLOW_SID` and `TWILIO_WORKSPACE_SID` are correct
+
+---
+
+### Step 11: Verify Handoff (Messaging)
+
+When handoff occurs in messaging:
+
+1. **Bot creates Flex Interaction** - Task appears in Flex
+2. **Bot webhooks are removed** - Bot stops receiving messages for this conversation
+3. **Sync Map entry is deleted** - Typing indicators stop for this customer
+4. **Agent takes over** - Conversation continues in Flex
+
+**To verify:**
+1. Send a message asking for a human agent
+2. Check Flex for new task
+3. Verify bot no longer responds to that conversation
+4. Agent can reply from Flex
+
+---
+
+## Phase 7: Messaging Verification Checklist
+
+- [ ] `TWILIO_CONVERSATION_SERVICE_SID` configured in `.env`
+- [ ] `TWILIO_WORKSPACE_SID` configured in `.env`
+- [ ] Conversations webhook pointing to `/api/conversations/incoming-message`
+- [ ] WhatsApp message receives AI response
+- [ ] (Optional) Typing indicator appears while processing
+- [ ] Human handoff creates Flex task
+- [ ] Bot stops responding after handoff
+
+---
+
+## Quick Reference (Updated)
+
+### Important URLs
+
+**Voice:**
+- **Incoming call webhook:** `https://[your-ngrok-domain].ngrok.app/api/incoming-call`
+- **Action webhook:** `https://[your-ngrok-domain].ngrok.app/api/action`
+
+**Messaging:**
+- **Conversations webhook:** `https://[your-ngrok-domain].ngrok.app/api/conversations/incoming-message`
+- **WhatsApp typing indicators:** `https://[your-ngrok-domain].ngrok.app/api/conversations/whatsapp-incoming`
+
+### Log Files
+Monitor these terminals:
+1. **ngrok terminal:** Shows incoming webhook requests
+2. **Server terminal:** Shows application logs and errors
+
+### Stop/Restart
+```bash
+# Stop server: Ctrl+C in server terminal
+# Stop ngrok: Ctrl+C in ngrok terminal
+
+# Restart server
+npm run dev
+
+# Restart ngrok (will generate NEW URL - update ALL Twilio webhooks!)
+ngrok http 3000
+```
+
+---
+
+## Key Customization Points (Messaging)
+
+### 💬 Messaging Controller
+
+**Conversation Handler** - [src/controllers/conversationController.ts](src/controllers/conversationController.ts)
+- **What:** Processes incoming Conversations messages
+- **Key functions:**
+  - `handleIncomingMessage`: Main message handler (line 12)
+  - `handleConversationEvent`: Lifecycle events (line 130)
+- **Customize:** Modify message filtering, session management
+
+---
+
+### ⌨️ Typing Indicators
+
+**Typing Controller** - [src/controllers/typingIndicatorController.ts](src/controllers/typingIndicatorController.ts)
+- **What:** Sends WhatsApp typing indicators for active bot conversations
+- **Config:** `TYPING_INDICATOR_DELAY_MS` (line 4) - delay before sending indicator
+- **Requires:** `TWILIO_SYNC_SERVICE_SID` environment variable
+
+**Sync Service** - [src/utils/syncService.ts](src/utils/syncService.ts)
+- **What:** Manages active bot conversations in Twilio Sync Map
+- **Config:**
+  - `SYNC_MAP_NAME`: Name of the Sync Map (line 6)
+  - `ITEM_TTL_SECONDS`: Auto-cleanup after 24 hours (line 7)
+
+---
+
+### 🤝 Messaging Handoff
+
+**Handoff Logic** - [src/utils/conversationHandoff.ts](src/utils/conversationHandoff.ts)
+- **What:** Transfers messaging conversations to Flex agents
+- **Key behaviors:**
+  - Creates Flex Interaction via Interactions API
+  - Removes bot webhooks (identified by `NGROK_DOMAIN`)
+  - Updates conversation attributes with handoff info
+- **Customize:** Modify task attributes, add custom handoff data
+
+---
+
 ## Next Steps
 
-You've successfully deployed the Voice AI Assistant!
+You've successfully deployed the Voice AI Assistant with optional messaging capabilities!
 
 For customization topics:
 - Modifying the AI prompt and behavior

@@ -4,137 +4,309 @@ Based on Twilio Professional Services conversations-relay-sample.
 
 ## Overview
 
-A Twilio ConversationRelay project for building a Voice AI Assistant.
+A Twilio ConversationRelay project for building AI-powered assistants that work across **Voice** and **Messaging** channels. This template supports both real-time voice conversations via WebSocket and asynchronous messaging through Twilio Conversations (WhatsApp, SMS, etc.).
 
 ![ConversationRelay](docs/conversation-relay.png)
 
 ## Features
 
-- REST API endpoint for incoming calls
-- WebSocket real-time communication
-- Uses OpenAI model and ChatCompletion API in `LLMService`
-  - Supports both streaming and non-streaming responses
+- **Voice Channel**: REST API endpoint for incoming calls with WebSocket real-time communication
+- **Messaging Channel**: Twilio Conversations integration for WhatsApp and SMS
+- **Unified LLM Service**: Uses OpenAI ChatCompletion API with support for streaming and non-streaming responses
+- **Human Agent Handoff**: Seamless transfer to Twilio Flex agents for both voice and messaging
+- **Typing Indicators**: Optional WhatsApp typing indicators for improved user experience (requires Twilio Sync)
+- **Tool Integration**: Extensible tool system for custom business logic
 - Jest for unit testing
 
 ## Prerequisites
 
 - Node.js (v16+)
-- npm
+- npm or yarn
+- Twilio Account with:
+  - A phone number configured for voice and/or messaging
+  - Twilio Flex (for human agent handoff)
+  - Twilio Conversations Service
+  - Twilio Sync Service (optional, for typing indicators)
 
 ## Setup
 
-### Open ngrok tunnel
+### 1. Open ngrok tunnel
 
 When developing & testing locally, you'll need to open an ngrok tunnel that forwards requests to your local development server.
-This ngrok tunnel is used for the Twilio ConversationRelay to send and receive data from a websocket.
 
-To spin up an ngrok tunnel, open a Terminal and run:
-
-```
+```bash
 ngrok http 3000
 ```
 
-Once the tunnel has been initiated, copy the `Forwarding` URL. It will look something like: `https://[your-ngrok-domain].ngrok.app`. You will
-need this when configuring environment variables for the middleware in the next section.
+Copy the `Forwarding` URL (e.g., `https://[your-ngrok-domain].ngrok.app`). You will need this for environment variables and Twilio webhook configuration.
 
-Note that the `ngrok` command above forwards to a development server running on port `3000`, which is the default port configured in this application. If you override the `PORT` environment variable covered in the next section, you will need to update the `ngrok` command accordingly.
+### 2. Clone and install
 
-1. Clone this repository
-
-2. Navigate to the project directory:
-   ```sh
-   cd conversation-relay-application-template
-   ```
-3. Install dependencies:
-   ```sh
-   yarn install
-   ```
-4. Copy the sample environment file and configure the environment variables:
-   ```sh
-   cp .env.example .env
-   ```
-
-Once created, open `.env` in your code editor. You are required to set the following environment variables for the app to function properly:
-| Variable Name | Description | Example Value |
-|-------------------|--------------------------------------------------|------------------------|
-| `NGROK_DOMAIN` | The forwarding URL of your ngrok tunnel initiated above | `[your-ngrok-domain].ngrok.app` |
-| `TWILIO_ACCOUNT_SID` | Your Twilio Account SID, which can be found in the Twilio Console. | `ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
-| `TWILIO_AUTH_TOKEN` | Your Twilio Auth Token, which is also found in the Twilio Console. | `your_auth_token_here` |
-| `TWILIO_WORKFLOW_SID` | The Taskrouter Workflow SID, which is automatically provisioned with your Flex account. Used to enqueue inbound call with Flex agents. To find this, in the Twilio Console go to TaskRouter > Workspaces > Flex Task Assignment > Workflows |`WWXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`|
-| `WELCOME_GREETING` | The message automatically played to the caller |
-| `OPENAI_API_KEY` | Your OpenAI API Key | `your_api_key_here` |
-| `TWILIO_VOICE_INTELLIGENCE_SID` | Twilio Voice Intelligence SID used for call transcription | `GAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
-| `GOOGLESHEETS_SPREADSHEET_ID` | Google Sheets spreadsheet ID used by tools | |
-| `GOOGLE_CALENDAR_ID` | Google Calendar ID used by tools | |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | JSON credentials for Google APIs | |
-
-Below is an optional environment variable that has default value that can be overridden:
-| `PORT` | The port your local server runs on. | `3000` |
-
-5. In the Twilio Console, go to Phone Numbers > Manage > Active Numbers and select an existing phone number (or Buy a number). In your Phone Number configuration settings, update the first A call comes in dropdown to Webhook and set the URL to https://[your-ngrok-domain].ngrok.app/api/incoming-call, ensure HTTP is set to HTTP POST, and click Save configuration.
-
-### Run the app
-
-Once dependencies are installed, `.env` is set up, and Twilio is configured properly, run the dev server with the following command:
-
+```bash
+git clone <repository-url>
+cd conversation-relay-application-template
+yarn install
 ```
+
+### 3. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and configure the following variables:
+
+#### Required Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `TWILIO_ACCOUNT_SID` | Your Twilio Account SID | `ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `TWILIO_AUTH_TOKEN` | Your Twilio Auth Token | `your_auth_token_here` |
+| `TWILIO_PHONE_NUMBER` | Your Twilio phone number | `+1234567890` |
+| `TWILIO_VOICE_INTELLIGENCE_SID` | Voice Intelligence SID for call transcription | `GAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `TWILIO_CONVERSATION_SERVICE_SID` | Conversations Service SID | `ISXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `TWILIO_WORKFLOW_SID` | TaskRouter Workflow SID for Flex | `WWXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `TWILIO_WORKSPACE_SID` | TaskRouter Workspace SID for Flex | `WSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| `OPENAI_API_KEY` | Your OpenAI API Key | `sk-...` |
+
+#### Optional Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NGROK_DOMAIN` | Your ngrok domain (without https://) | - |
+| `WELCOME_GREETING` | Message played/sent to users on first contact | - |
+| `TWILIO_SYNC_SERVICE_SID` | Sync Service SID for typing indicators feature | - |
+| `GOOGLESHEETS_SPREADSHEET_ID` | Google Sheets ID for tools integration | - |
+| `GOOGLE_CALENDAR_ID` | Google Calendar ID for booking tools | - |
+| `PORT` | Local server port | `3000` |
+
+### 4. Configure Twilio Webhooks
+
+#### For Voice (Incoming Calls)
+
+1. Go to **Phone Numbers > Manage > Active Numbers** in Twilio Console
+2. Select your phone number
+3. Under **Voice & Fax**, set:
+   - **A call comes in**: Webhook
+   - **URL**: `https://[your-ngrok-domain].ngrok.app/api/incoming-call`
+   - **HTTP Method**: POST
+
+#### For Messaging (Conversations)
+
+1. Go to **Conversations > Manage > Services** in Twilio Console
+2. Select your Conversations Service
+3. Under **Webhooks**, add:
+   - **Post-Event URL**: `https://[your-ngrok-domain].ngrok.app/api/conversations/incoming-message`
+   - **Events**: `onMessageAdded`
+
+#### For Typing Indicators (Optional)
+
+If using typing indicators, configure an additional webhook on your **Messaging Service** or **WhatsApp Sender**:
+- **Incoming Message Webhook**: `https://[your-ngrok-domain].ngrok.app/api/conversations/whatsapp-incoming`
+
+### 5. Run the app
+
+```bash
 npm run dev
 ```
 
-### Testing the app
+## Architecture
 
-With the development server running, you can now begin testing the Voice AI Assistant. Place a call to the configured phone number and start interacting with your AI Assistant
+### Channel Flow
 
-## Scripts
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Incoming Request                         │
+└─────────────────────────────────────────────────────────────────┘
+                                  │
+                    ┌─────────────┴─────────────┐
+                    ▼                           ▼
+            ┌──────────────┐           ┌──────────────────┐
+            │  Voice Call  │           │  Messaging/WA    │
+            │  /api/       │           │  /api/           │
+            │  incoming-   │           │  conversations/  │
+            │  call        │           │  incoming-       │
+            │              │           │  message         │
+            └──────┬───────┘           └────────┬─────────┘
+                   │                            │
+                   ▼                            ▼
+            ┌──────────────┐           ┌──────────────────┐
+            │  WebSocket   │           │  Conversations   │
+            │  Service     │           │  Controller      │
+            └──────┬───────┘           └────────┬─────────┘
+                   │                            │
+                   └─────────────┬──────────────┘
+                                 ▼
+                        ┌──────────────┐
+                        │  LLMService  │
+                        │  (OpenAI)    │
+                        └──────┬───────┘
+                               │
+                    ┌──────────┴──────────┐
+                    ▼                     ▼
+            ┌──────────────┐      ┌──────────────┐
+            │    Tools     │      │   Human      │
+            │  (Business   │      │   Agent      │
+            │   Logic)     │      │   Handoff    │
+            └──────────────┘      └──────────────┘
+```
 
-- `npm run dev`: Start the development server
-- `npm run build`: Compile TypeScript
-- `npm start`: Run the production build
-- `npm test`: Run unit tests
+## Human Agent Handoff
+
+The system supports seamless handoff to human agents via Twilio Flex for both channels.
+
+### How It Works
+
+1. **LLM Triggers Handoff**: The AI assistant calls the `humanAgentHandoff` tool when it determines a human agent is needed
+2. **Flex Interaction Created**: A TaskRouter task is created and routed to available agents
+3. **Bot Disconnects**:
+   - **Voice**: The call is transferred to Flex
+   - **Messaging**: Bot webhooks are removed from the conversation, and the Sync Map entry is deleted (if using typing indicators)
+4. **Agent Takes Over**: The human agent continues the conversation in Flex
+
+### Handoff for Voice
+
+When handoff occurs during a voice call:
+- The `humanAgentHandoff` tool emits an event
+- The WebSocket service sends an `end` message with handoff data
+- ConversationRelay transfers the call to Flex using the configured workflow
+
+### Handoff for Messaging
+
+When handoff occurs during a messaging conversation ([conversationHandoff.ts](src/utils/conversationHandoff.ts)):
+1. A Flex Interaction is created via the Interactions API
+2. Bot webhooks are removed from the conversation (identified by `NGROK_DOMAIN`)
+3. The conversation is marked as handed off in its attributes
+4. The Sync Map entry is removed (stops typing indicators for this customer)
+
+## Typing Indicators (WhatsApp)
+
+This feature shows a "typing..." indicator to WhatsApp users while the bot processes their message.
+
+### Requirements
+
+- `TWILIO_SYNC_SERVICE_SID` environment variable configured
+- WhatsApp Sender or Messaging Service webhook pointing to `/api/conversations/whatsapp-incoming`
+
+### How It Works
+
+1. When a bot session starts, the customer phone is stored in a Twilio Sync Map
+2. Incoming WhatsApp messages trigger the `/whatsapp-incoming` endpoint
+3. The endpoint checks the Sync Map to see if this customer has an active bot conversation
+4. If yes, a typing indicator is sent via the Twilio Messaging API
+5. When handoff occurs or conversation ends, the Sync Map entry is removed
+
+This ensures typing indicators are only shown when the bot is handling the conversation, not when a human agent is.
 
 ## API Endpoints
 
-- `POST /api/incoming-call`: Process incoming call - Initiates ConversationRelay (see [src/routes/callRoutes.ts](src/routes/callRoutes.ts))
-- `POST /api/action`: Handle connect action - Human agent handoff (see [src/routes/connectActionRoutes.ts](src/routes/connectActionRoutes.ts))
+### Voice Endpoints
 
-## WebSocket
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/incoming-call` | POST | Process incoming voice call, initiates ConversationRelay |
+| `/api/action` | POST | Handle Twilio Studio connect actions (human agent handoff) |
 
-- Real-time communication setup (see [src/services/llm/websocketService.ts](src/services/llm/websocketService.ts))
+### Messaging Endpoints
 
-## Configuration
-
-- Environment variables are loaded from the `.env` file (see [src/config.ts](src/config.ts))
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/conversations/incoming-message` | POST | Process incoming Conversations messages |
+| `/api/conversations/conversation-events` | POST | Handle conversation events (participant added/removed) |
+| `/api/conversations/whatsapp-incoming` | POST | Process incoming WhatsApp messages for typing indicators |
+| `/api/conversations/message-status` | POST | Handle message delivery receipts |
 
 ## Controllers
 
-- `handleIncomingCall`: Processes incoming call (see [src/controllers/callController.ts](src/controllers/callController.ts))
-- `initiateRecording`: Starts a call recording (see [src/controllers/callController.ts](src/controllers/callController.ts))
-- `handleConnectAction`: Handles connect action (see [src/controllers/connectActionController.ts](src/controllers/connectActionController.ts))
+### Voice Controllers
 
-## LLM Services
+- **handleIncomingCall**: Processes incoming calls and initiates ConversationRelay ([callController.ts](src/controllers/callController.ts))
+- **initiateRecording**: Starts call recording ([callController.ts](src/controllers/callController.ts))
+- **handleConnectAction**: Handles Studio connect actions ([connectActionController.ts](src/controllers/connectActionController.ts))
 
-- `LLMService`: Manages interactions with the language model (see [src/services/llm/llmService.ts](src/services/llm/llmService.ts))
+### Messaging Controllers
 
-### Tools
+- **handleIncomingMessage**: Processes incoming Conversations messages, manages LLM sessions ([conversationController.ts](src/controllers/conversationController.ts))
+- **handleConversationEvent**: Handles conversation lifecycle events ([conversationController.ts](src/controllers/conversationController.ts))
+- **handleIncomingWhatsAppMessage**: Manages typing indicators for WhatsApp ([typingIndicatorController.ts](src/controllers/typingIndicatorController.ts))
 
-- `addSurveyResponse`: Stores survey answers (see [src/services/llm/tools/addSurveyResponse.ts](src/services/llm/tools/addSurveyResponse.ts))
-- `bookDriver`: Books a driver using calendar data (see [src/services/llm/tools/bookDriver.ts](src/services/llm/tools/bookDriver.ts))
-- `checkCardDelivery`: Checks card delivery status (see [src/services/llm/tools/checkCardDelivery.ts](src/services/llm/tools/checkCardDelivery.ts))
-- `checkHsaAccount`: Checks if the user has an HSA account (see [src/services/llm/tools/checkHsaAccount.ts](src/services/llm/tools/checkHsaAccount.ts))
-- `checkIncreaseLimit`: Determines eligibility for a credit or account limit increase (see [src/services/llm/tools/checkIncreaseLimit.ts](src/services/llm/tools/checkIncreaseLimit.ts))
-- `checkPaymentOptions`: Payment options available to the user (see [src/services/llm/tools/checkPaymentOptions.ts](src/services/llm/tools/checkPaymentOptions.ts))
-- `checkPendingBill`: Checks for pending medical bills (see [src/services/llm/tools/checkPendingBill.ts](src/services/llm/tools/checkPendingBill.ts))
-- `getCurrentWeather`: Returns demo weather information (see [src/services/llm/tools/getCurrentWeather.ts](src/services/llm/tools/getCurrentWeather.ts))
-- `humanAgentHandoff`: Handles handoff to a human agent (see [src/services/llm/tools/humanAgentHandoff.ts](src/services/llm/tools/humanAgentHandoff.ts))
-- `identifyUser`: Looks up user information in a spreadsheet (see [src/services/llm/tools/identifyUser.ts](src/services/llm/tools/identifyUser.ts))
-- `searchCommonMedicalTerms`: Searches common medical terms (see [src/services/llm/tools/searchCommonMedicalTerms.ts](src/services/llm/tools/searchCommonMedicalTerms.ts))
-- `switchLanguage`: Switches the conversation language (see [src/services/llm/tools/switchLanguage.ts](src/services/llm/tools/switchLanguage.ts))
-- `troubleshootLoginIssues`: Helps resolve login issues (see [src/services/llm/tools/troubleshootLoginIssues.ts](src/services/llm/tools/troubleshootLoginIssues.ts))
-- `verifyUserIdentity`: Verifies user identity (see [src/services/llm/tools/verifyUserIdentity.ts](src/services/llm/tools/verifyUserIdentity.ts))
+## Services
 
-## Data
+### LLMService
 
-- Mock data (see [src/data/mock-data.ts](src/data/mock-data.ts))
+Manages interactions with OpenAI's language model ([llmService.ts](src/services/llm/llmService.ts)):
+- Supports both streaming (voice) and non-streaming (messaging) responses
+- Handles tool calls and function execution
+- Emits events for handoff, conversation end, and completion
+
+### WebSocket Service
+
+Real-time communication for voice calls ([websocketService.ts](src/services/llm/websocketService.ts))
+
+### Sync Service
+
+Manages active bot conversations in Twilio Sync for typing indicators ([syncService.ts](src/utils/syncService.ts)):
+- `storeActiveConversation`: Stores customer phone when bot session starts
+- `getActiveConversation`: Checks if customer has active bot session
+- `removeActiveConversation`: Removes entry on handoff or conversation end
+
+## Tools
+
+The LLM can use various tools for business logic:
+
+| Tool | Description |
+|------|-------------|
+| `humanAgentHandoff` | Transfers to a human agent |
+| `switchLanguage` | Changes conversation language |
+| `identifyUser` | Looks up user in spreadsheet |
+| `bookDriver` | Books a driver using calendar |
+| `addSurveyResponse` | Stores survey answers |
+| `checkCardDelivery` | Checks card delivery status |
+| `checkIncreaseLimit` | Checks credit limit eligibility |
+| `checkPendingBill` | Checks for pending bills |
+| `checkHsaAccount` | Checks HSA account status |
+| `checkPaymentOptions` | Gets available payment options |
+| `troubleshootLoginIssues` | Helps resolve login issues |
+| `searchCommonMedicalTerms` | Searches medical terms |
+
+See [src/services/llm/tools/](src/services/llm/tools/) for implementations.
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start development server with hot reload |
+| `npm run build` | Compile TypeScript to JavaScript |
+| `npm start` | Run production build |
+| `npm test` | Run unit tests |
+
+## Project Structure
+
+```
+src/
+├── config.ts                 # Environment configuration
+├── server.ts                 # Express + WebSocket server
+├── controllers/
+│   ├── callController.ts           # Voice call handling
+│   ├── connectActionController.ts  # Studio actions
+│   ├── conversationController.ts   # Messaging handling
+│   └── typingIndicatorController.ts # WhatsApp typing
+├── routes/
+│   ├── callRoutes.ts               # Voice endpoints
+│   ├── connectActionRoutes.ts      # Action endpoints
+│   └── conversationRoutes.ts       # Messaging endpoints
+├── services/llm/
+│   ├── llmService.ts               # OpenAI integration
+│   ├── websocketService.ts         # Voice WebSocket
+│   └── tools/                      # LLM tools
+├── utils/
+│   ├── conversationHandoff.ts      # Flex handoff logic
+│   └── syncService.ts              # Sync Map management
+├── types/
+│   └── index.ts                    # TypeScript types
+└── data/
+    └── mock-data.ts                # Mock data for tools
+```
 
 ## License
 

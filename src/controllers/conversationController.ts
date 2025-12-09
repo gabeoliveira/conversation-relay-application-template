@@ -3,6 +3,7 @@ import { config } from '../config';
 import LLMService from '../services/llm/llmService';
 import { ConversationMessage, ConversationEvent } from '../types';
 import { handleConversationHandoff } from '../utils/conversationHandoff';
+import { storeActiveConversation, removeActiveConversation } from '../utils/syncService';
 
 const client = new Twilio(config.twilio.accountSid, config.twilio.authToken);
 
@@ -45,6 +46,12 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
       
       conversationSessions.set(ConversationSid, llmService);
       console.log(`Created new LLM session for conversation: ${ConversationSid}`);
+
+      // Store in Sync Map so typing indicator webhook knows this is an active bot conversation
+      const customerPhone = String(participant.messagingBinding?.address || '');
+      if (customerPhone) {
+        storeActiveConversation(customerPhone, ConversationSid);
+      }
     }
 
     // Process the message with LLM
@@ -90,6 +97,12 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
           conversationSid: ConversationSid
         };
         
+        // Remove from Sync Map - agent is now handling the conversation
+        const customerPhone = participant.messagingBinding?.address;
+        if (customerPhone) {
+          removeActiveConversation(String(customerPhone));
+        }
+
         // Use the new handoff function - bot will handle messaging
         await handleConversationHandoff(ConversationSid, enrichedHandoffData);
       } catch (error) {
@@ -107,7 +120,13 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
             body: 'Thank you for using our service. This conversation is now complete.',
             author: 'system'
           });
-        
+
+        // Remove from Sync Map - conversation is ending
+        const customerPhone = participant.messagingBinding?.address;
+        if (customerPhone) {
+          removeActiveConversation(String(customerPhone));
+        }
+
         // Clean up the session
         conversationSessions.delete(ConversationSid);
         console.log(`Conversation ${ConversationSid} ended and session cleaned up`);
