@@ -32,6 +32,11 @@ const configSchema = z.object({
   
   // OpenAI Configuration
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MAX_COMPLETION_TOKENS: z.string().optional(),
+
+  // LLM Configuration
+  LLM_PROVIDER: z.enum(['openai-chat-completions', 'openai-responses']).optional(),
+  LLM_MODEL: z.string().optional(),
 
   // Google APIs Configuration
   GOOGLESHEETS_SPREADSHEET_ID: z.string().optional(),
@@ -42,7 +47,7 @@ const configSchema = z.object({
 });
 
 // Validate and parse the environment variables
-let parsedConfig: { TWILIO_ACCOUNT_SID: string; TWILIO_AUTH_TOKEN: string; TWILIO_PHONE_NUMBER: string; TWILIO_WORKFLOW_SID: string; TWILIO_WORKSPACE_SID: string; TWILIO_VOICE_INTELLIGENCE_SID: string; TWILIO_CONVERSATION_SERVICE_SID: string; TWILIO_SYNC_SERVICE_SID?: string | undefined; WELCOME_GREETING?: string | undefined; PORT: string; NGROK_DOMAIN?: string | undefined; SPEECH_KEY?: string | undefined; SPEECH_REGION?: string | undefined; OPENAI_API_KEY?: string | undefined; GOOGLESHEETS_SPREADSHEET_ID?: string | undefined; GOOGLE_CALENDAR_ID?: string | undefined};
+let parsedConfig: { TWILIO_ACCOUNT_SID: string; TWILIO_AUTH_TOKEN: string; TWILIO_PHONE_NUMBER: string; TWILIO_WORKFLOW_SID: string; TWILIO_WORKSPACE_SID: string; TWILIO_VOICE_INTELLIGENCE_SID: string; TWILIO_CONVERSATION_SERVICE_SID: string; TWILIO_SYNC_SERVICE_SID?: string | undefined; WELCOME_GREETING?: string | undefined; PORT: string; NGROK_DOMAIN?: string | undefined; SPEECH_KEY?: string | undefined; SPEECH_REGION?: string | undefined; OPENAI_API_KEY?: string | undefined; OPENAI_MAX_COMPLETION_TOKENS?: string | undefined; LLM_PROVIDER?: 'openai-chat-completions' | 'openai-responses' | undefined; LLM_MODEL?: string | undefined; GOOGLESHEETS_SPREADSHEET_ID?: string | undefined; GOOGLE_CALENDAR_ID?: string | undefined};
 
 try {
   parsedConfig = configSchema.parse(process.env);
@@ -75,7 +80,14 @@ export const config = {
     region: parsedConfig.SPEECH_REGION
   },
   openai: {
-    apiKey: parsedConfig.OPENAI_API_KEY
+    apiKey: parsedConfig.OPENAI_API_KEY,
+    maxCompletionTokens: parsedConfig.OPENAI_MAX_COMPLETION_TOKENS
+      ? parseInt(parsedConfig.OPENAI_MAX_COMPLETION_TOKENS, 10)
+      : undefined
+  },
+  llm: {
+    provider: parsedConfig.LLM_PROVIDER || 'openai-chat-completions',
+    model: parsedConfig.LLM_MODEL || 'gpt-4.1'
   },
   server: {
     port: parseInt(parsedConfig.PORT || '3000', 10)

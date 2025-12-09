@@ -127,7 +127,7 @@ export async function getActiveConversation(
       .syncMapItems(key)
       .fetch();
 
-    return item.data as ActiveConversation;
+    return item.data as unknown as ActiveConversation;
   } catch (error: any) {
     if (error.code === 20404) {
       // Item doesn't exist

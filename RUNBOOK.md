@@ -73,6 +73,14 @@ Open `.env` in your code editor and configure the following **required** variabl
 | `OPENAI_API_KEY` | [OpenAI Platform](https://platform.openai.com/api-keys) | `sk-...` |
 | `TWILIO_VOICE_INTELLIGENCE_SID` | Twilio Console > Voice Intelligence > Services | `GAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
 
+**Optional LLM Configuration** (can skip for initial testing - uses defaults):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LLM_PROVIDER` | API to use: `openai-chat-completions` or `openai-responses` | `openai-chat-completions` |
+| `LLM_MODEL` | OpenAI model (see [Model Selection Guide](docs/MODEL_SELECTION.md)) | `gpt-4.1` |
+| `OPENAI_MAX_COMPLETION_TOKENS` | Max response tokens (150-200 for voice) | No limit |
+
 **Optional Google integrations** (can skip for initial testing):
 - `GOOGLESHEETS_SPREADSHEET_ID`
 - `GOOGLE_CALENDAR_ID`
@@ -182,6 +190,28 @@ ngrok http 3000
 
 This section highlights where to make common customizations. Each entry shows the **file location** and **what you can change**.
 
+### 🤖 LLM Provider & Model Configuration
+
+**Provider Selection** - [.env](.env) / [src/config.ts](src/config.ts)
+- **What:** Choose between OpenAI Chat Completions API or Responses API
+- **Options:**
+  - `openai-chat-completions` (default) - Mature, stable API
+  - `openai-responses` - Newer API with built-in state management, uses `instructions` parameter
+- **Config:** Set `LLM_PROVIDER` in `.env`
+
+**Model Selection** - [.env](.env) / [src/config.ts](src/config.ts)
+- **What:** Choose which OpenAI model to use
+- **Options:** `gpt-4.1` (default), `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`
+- **Config:** Set `LLM_MODEL` in `.env`
+- **Guide:** See [Model Selection Guide](docs/MODEL_SELECTION.md) for detailed recommendations
+
+**Response Length** - [.env](.env)
+- **What:** Limit token count in responses (important for voice)
+- **Recommended:** 150-200 tokens for conversational voice bots
+- **Config:** Set `OPENAI_MAX_COMPLETION_TOKENS` in `.env`
+
+---
+
 ### 🎯 AI Prompts & Behavior
 
 **System Prompt** - [src/prompts/systemPrompt.ts](src/prompts/systemPrompt.ts)
@@ -267,10 +297,10 @@ This section highlights where to make common customizations. Each entry shows th
   - [bookDriver.ts](src/services/llm/tools/bookDriver.ts) - Schedule appointments
   - [identifyUser.ts](src/services/llm/tools/identifyUser.ts) - User lookup
 
-**LLM Service Integration** - [src/services/llm/llmService.ts](src/services/llm/llmService.ts)
+**LLM Service Integration** - [src/services/llm/providers/](src/services/llm/providers/)
 - **What:** Connects tool definitions to their implementations
-- **Lines 16-31:** Import your tool's execute function
-- **Lines 391-403:** Map tool name to execute function in `toolFunction` object
+- **Providers:** Both `openai-chat-completions.ts` and `openai-responses.ts` implement the same interface
+- **Tool registration:** In `executeToolCall` method of each provider
 
 **Add New Tool (4 steps):**
 1. **Create tool file** in `src/services/llm/tools/myNewTool.ts`
@@ -291,9 +321,9 @@ This section highlights where to make common customizations. Each entry shows th
    }
    ```
 3. **Export** from [index.ts](src/services/llm/tools/index.ts): `export * from './myNewTool';`
-4. **Register** in [llmService.ts](src/services/llm/llmService.ts):
-   - Import: `import { myNewTool } from "./tools";` (line ~30)
-   - Add to `toolFunction` map: `my_new_tool: myNewTool` (line ~402)
+4. **Register** in both provider files:
+   - Import: `import { myNewTool } from "../tools";`
+   - Add to `toolFunction` map in `executeToolCall`: `my_new_tool: myNewTool`
 
 ---
 

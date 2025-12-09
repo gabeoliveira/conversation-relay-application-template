@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
-import LLMService from "./llmService";
+import { createLLMService } from "./factory";
 import { ConversationRelayMessage } from "../../types";
 import {config} from "../../config";
 import { DTMFHelper } from "./dtmfHelper";
@@ -9,7 +9,7 @@ export function initializeWebSocketHandlers(wss: WebSocketServer) {
   wss.on("connection", (ws: WebSocket) => {
     console.log("New WebSocket connection");
 
-    const llmService = new LLMService(config.openai.apiKey);
+    const llmService = createLLMService();
     const dtmfHelper = new DTMFHelper();
 
     ws.on("message", (message: string) => {
@@ -96,22 +96,28 @@ export function initializeWebSocketHandlers(wss: WebSocketServer) {
       ws.send(JSON.stringify(textMessage));
     });
 
-    llmService.on("streamChatCompletion:partial", (content: any) => {
-      const textMessage = {
-        type: "text",
-        token: content,
-        last: false,
-      };
-      ws.send(JSON.stringify(textMessage));
+    llmService.on("streamChatCompletion:partial", (content: string) => {
+      // Only send if there's actual content (avoid empty token error)
+      if (content) {
+        const textMessage = {
+          type: "text",
+          token: content,
+          last: false,
+        };
+        ws.send(JSON.stringify(textMessage));
+      }
     });
 
-    llmService.on("streamChatCompletion:complete", (message: any) => {
-      const textMessage = {
-        type: "text",
-        token: message.content,
-        last: false,
-      };
-      ws.send(JSON.stringify(textMessage));
+    llmService.on("streamChatCompletion:complete", (content: string) => {
+      // Only send if there's actual content (avoid empty token error)
+      if (content) {
+        const textMessage = {
+          type: "text",
+          token: content,
+          last: true,
+        };
+        ws.send(JSON.stringify(textMessage));
+      }
     });
 
     llmService.on("humanAgentHandoff", (message: any) => {

@@ -12,7 +12,7 @@ A Twilio ConversationRelay project for building AI-powered assistants that work 
 
 - **Voice Channel**: REST API endpoint for incoming calls with WebSocket real-time communication
 - **Messaging Channel**: Twilio Conversations integration for WhatsApp and SMS
-- **Unified LLM Service**: Uses OpenAI ChatCompletion API with support for streaming and non-streaming responses
+- **Multi-Provider LLM Service**: Supports OpenAI Chat Completions API and Responses API with streaming and non-streaming responses
 - **Human Agent Handoff**: Seamless transfer to Twilio Flex agents for both voice and messaging
 - **Typing Indicators**: Optional WhatsApp typing indicators for improved user experience (requires Twilio Sync)
 - **Tool Integration**: Extensible tool system for custom business logic
@@ -71,14 +71,17 @@ Open `.env` and configure the following variables:
 
 #### Optional Variables
 
-| Variable                      | Description                                    | Default |
-| ----------------------------- | ---------------------------------------------- | ------- |
-| `NGROK_DOMAIN`                | Your ngrok domain (without https://)           | -       |
-| `WELCOME_GREETING`            | Message played/sent to users on first contact  | -       |
-| `TWILIO_SYNC_SERVICE_SID`     | Sync Service SID for typing indicators feature | -       |
-| `GOOGLESHEETS_SPREADSHEET_ID` | Google Sheets ID for tools integration         | -       |
-| `GOOGLE_CALENDAR_ID`          | Google Calendar ID for booking tools           | -       |
-| `PORT`                        | Local server port                              | `3000`  |
+| Variable                       | Description                                             | Default                   |
+| ------------------------------ | ------------------------------------------------------- | ------------------------- |
+| `NGROK_DOMAIN`                 | Your ngrok domain (without https://)                    | -                         |
+| `WELCOME_GREETING`             | Message played/sent to users on first contact           | -                         |
+| `TWILIO_SYNC_SERVICE_SID`      | Sync Service SID for typing indicators feature          | -                         |
+| `OPENAI_MAX_COMPLETION_TOKENS` | Max tokens for LLM responses (150-200 recommended)      | -                         |
+| `LLM_PROVIDER`                 | LLM provider: `openai-chat-completions` or `openai-responses` | `openai-chat-completions` |
+| `LLM_MODEL`                    | OpenAI model to use (see [Model Selection Guide](docs/MODEL_SELECTION.md)) | `gpt-4.1`                 |
+| `GOOGLESHEETS_SPREADSHEET_ID`  | Google Sheets ID for tools integration                  | -                         |
+| `GOOGLE_CALENDAR_ID`           | Google Calendar ID for booking tools                    | -                         |
+| `PORT`                         | Local server port                                       | `3000`                    |
 
 ### 4. Configure Twilio Webhooks
 
@@ -235,13 +238,22 @@ This ensures typing indicators are only shown when the bot is handling the conve
 
 ## Services
 
-### LLMService
+### LLM Service
 
-Manages interactions with OpenAI's language model ([llmService.ts](src/services/llm/llmService.ts)):
+Multi-provider LLM service with factory pattern for provider selection:
 
-- Supports both streaming (voice) and non-streaming (messaging) responses
-- Handles tool calls and function execution
-- Emits events for handoff, conversation end, and completion
+- **Providers**: OpenAI Chat Completions API (`openai-chat-completions`) and Responses API (`openai-responses`)
+- **Factory**: [factory.ts](src/services/llm/factory.ts) - Creates the appropriate service based on `LLM_PROVIDER` config
+- **Chat Completions**: [openai-chat-completions.ts](src/services/llm/providers/openai-chat-completions.ts) - Stable, well-tested API
+- **Responses API**: [openai-responses.ts](src/services/llm/providers/openai-responses.ts) - Uses `instructions` parameter for efficient system prompt handling
+
+Both providers support:
+- Streaming (voice) and non-streaming (messaging) responses
+- Tool calls and function execution
+- Events for handoff, conversation end, and completion
+- Configurable model via `LLM_MODEL` environment variable
+
+See [Model Selection Guide](docs/MODEL_SELECTION.md) for detailed provider and model recommendations.
 
 ### WebSocket Service
 
@@ -301,9 +313,15 @@ src/
 │   ├── connectActionRoutes.ts      # Action endpoints
 │   └── conversationRoutes.ts       # Messaging endpoints
 ├── services/llm/
-│   ├── llmService.ts               # OpenAI integration
+│   ├── factory.ts                  # LLM provider factory
+│   ├── types.ts                    # LLM type definitions
 │   ├── websocketService.ts         # Voice WebSocket
+│   ├── providers/
+│   │   ├── openai-chat-completions.ts  # Chat Completions API
+│   │   └── openai-responses.ts         # Responses API
 │   └── tools/                      # LLM tools
+│       ├── toolDefinitions.ts      # Tool definitions (single source)
+│       └── converter.ts            # Tool format converter
 ├── utils/
 │   ├── conversationHandoff.ts      # Flex handoff logic
 │   └── syncService.ts              # Sync Map management

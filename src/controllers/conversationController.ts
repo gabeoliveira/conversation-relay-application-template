@@ -1,6 +1,7 @@
 import { Twilio } from 'twilio';
 import { config } from '../config';
-import LLMService from '../services/llm/llmService';
+import { createLLMService } from '../services/llm/factory';
+import { BaseLLMService } from '../services/llm/types';
 import { ConversationMessage, ConversationEvent } from '../types';
 import { handleConversationHandoff } from '../utils/conversationHandoff';
 import { storeActiveConversation, removeActiveConversation } from '../utils/syncService';
@@ -8,7 +9,7 @@ import { storeActiveConversation, removeActiveConversation } from '../utils/sync
 const client = new Twilio(config.twilio.accountSid, config.twilio.authToken);
 
 // Store LLM service instances per conversation
-const conversationSessions = new Map<string, LLMService>();
+const conversationSessions = new Map<string, BaseLLMService>();
 
 export async function handleIncomingMessage(messageData: ConversationMessage): Promise<any> {
   try {
@@ -32,10 +33,10 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
 
     // Get or create LLM service instance for this conversation
     let llmService = conversationSessions.get(ConversationSid);
-    
+
     if (!llmService) {
-      llmService = new LLMService();
-      
+      llmService = createLLMService();
+
       // Setup user context (similar to voice setup)
       await llmService.setup({
         conversationSid: ConversationSid,
@@ -43,7 +44,7 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
         clientIdentity: messageData.ClientIdentity,
         customerPhone: participant.messagingBinding?.address
       });
-      
+
       conversationSessions.set(ConversationSid, llmService);
       console.log(`Created new LLM session for conversation: ${ConversationSid}`);
 
