@@ -77,7 +77,7 @@ Open `.env` in your code editor and configure the following **required** variabl
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LLM_PROVIDER` | API to use: `openai-chat-completions` or `openai-responses` | `openai-chat-completions` |
+| `LLM_PROVIDER` | API to use: `openai-chat-completions`, `openai-responses`, or `openai-agents` | `openai-chat-completions` |
 | `LLM_MODEL` | OpenAI model (see [Model Selection Guide](docs/MODEL_SELECTION.md)) | `gpt-4.1` |
 | `OPENAI_MAX_COMPLETION_TOKENS` | Max response tokens (150-200 for voice) | No limit |
 
@@ -193,10 +193,11 @@ This section highlights where to make common customizations. Each entry shows th
 ### 🤖 LLM Provider & Model Configuration
 
 **Provider Selection** - [.env](.env) / [src/config.ts](src/config.ts)
-- **What:** Choose between OpenAI Chat Completions API or Responses API
+- **What:** Choose between OpenAI Chat Completions API, Responses API, or Agents SDK
 - **Options:**
   - `openai-chat-completions` (default) - Mature, stable API
   - `openai-responses` - Newer API with built-in state management, uses `instructions` parameter
+  - `openai-agents` - Advanced: Agents SDK with automatic tool execution (see [Advanced: Agents SDK](#advanced-openai-agents-sdk) below)
 - **Config:** Set `LLM_PROVIDER` in `.env`
 
 **Model Selection** - [.env](.env) / [src/config.ts](src/config.ts)
@@ -299,31 +300,54 @@ This section highlights where to make common customizations. Each entry shows th
 
 **LLM Service Integration** - [src/services/llm/providers/](src/services/llm/providers/)
 - **What:** Connects tool definitions to their implementations
-- **Providers:** Both `openai-chat-completions.ts` and `openai-responses.ts` implement the same interface
-- **Tool registration:** In `executeToolCall` method of each provider
+- **Providers:** `openai-chat-completions.ts`, `openai-responses.ts`, and `openai-agents.ts` implement the same interface
+- **Tool registration:** In `executeToolCall` method of each provider (Chat Completions/Responses) or in `createTools()` for Agents SDK
 
-**Add New Tool (4 steps):**
-1. **Create tool file** in `src/services/llm/tools/myNewTool.ts`
-   - Export an async execute function (e.g., `export async function myNewTool(args: {...}): Promise<string>`)
-2. **Add definition** to `toolDefinitions` array in [toolDefinitions.ts](src/services/llm/tools/toolDefinitions.ts)
+**Add New Tool (using Zod - recommended):**
+
+All tools use **Zod schemas as the single source of truth**. This ensures type safety and automatic JSON Schema generation.
+
+1. **Create tool file** in `src/services/llm/tools/myNewTool.ts`:
    ```typescript
+   import { z } from "zod";
+
+   // Zod schema - single source of truth
+   export const myNewToolSchema = z.object({
+     requiredParam: z.string().describe("Description for the LLM"),
+     optionalParam: z.number().optional().describe("Optional parameter")
+   });
+
+   // TypeScript type derived from Zod
+   export type MyNewToolParams = z.infer<typeof myNewToolSchema>;
+
+   // Implementation
+   export async function myNewTool(params: MyNewToolParams): Promise<string> {
+     // Your tool logic here
+     return "Result";
+   }
+   ```
+
+2. **Add to toolDefinitions.ts** (for Chat Completions/Responses):
+   ```typescript
+   // Import the schema
+   import { myNewToolSchema } from "./myNewTool";
+
+   // Add to toolDefinitions array
    {
      type: 'function',
      function: {
        name: 'my_new_tool',
        description: 'What this tool does',
-       parameters: {
-         type: 'object',
-         properties: { /* your params */ },
-         required: ['requiredParam']
-       }
-     }
+       parameters: zodToOpenAIParams(myNewToolSchema),
+     },
    }
    ```
+
 3. **Export** from [index.ts](src/services/llm/tools/index.ts): `export * from './myNewTool';`
-4. **Register** in both provider files:
-   - Import: `import { myNewTool } from "../tools";`
-   - Add to `toolFunction` map in `executeToolCall`: `my_new_tool: myNewTool`
+
+4. **Register in providers:**
+   - **Chat Completions/Responses:** Add to `toolFunction` map in `executeToolCall`
+   - **Agents SDK:** Add `tool()` wrapper in `createTools()` (see [Advanced: Agents SDK](#advanced-openai-agents-sdk))
 
 ---
 
@@ -350,6 +374,54 @@ This section highlights where to make common customizations. Each entry shows th
 
 ---
 
+### 🤖 Advanced: OpenAI Agents SDK
+
+The Agents SDK (`openai-agents`) is an advanced provider option that offers automatic tool execution and agentic workflows. It's recommended for complex orchestration scenarios.
+
+**When to use Agents SDK:**
+- Complex multi-step tool execution
+- Automatic tool orchestration without manual loop handling
+- Agentic workflows that benefit from built-in tracing
+- Zod-powered type safety for tool parameters
+
+**Key differences from Chat Completions/Responses:**
+
+| Aspect | Chat Completions / Responses | Agents SDK |
+|--------|------------------------------|------------|
+| Tool execution | Manual loop in provider | Automatic via SDK |
+| Schema format | JSON Schema (via toolDefinitions.ts) | Zod schemas (direct) |
+| Tool registration | `executeToolCall` method | `createTools()` with `tool()` wrapper |
+| State management | Manual | Built-in |
+
+**Adding a tool for Agents SDK:**
+
+In [openai-agents.ts](src/services/llm/providers/openai-agents.ts), add to the `createTools()` method:
+
+```typescript
+tool({
+  name: "my_new_tool",
+  description: "What this tool does",
+  parameters: myNewToolSchema,  // Import from your tool file
+  execute: async (args) => {
+    console.log('[AgentsSDK] 🔧 Executing my_new_tool');
+    // Optional: emit events for special behavior
+    // self.emit("someEvent", { data: args });
+    return await myNewTool(args);
+  }
+})
+```
+
+**Special behaviors in execute wrapper:**
+- **Logging:** Add console.log for debugging
+- **Event emission:** Use `self.emit()` for events like `switchLanguage`, `humanAgentHandoff`
+- **State flags:** Set `self._shouldEndAfterStream = true` to end conversation after tool execution
+
+**Note:** If you're using only the Agents SDK, you don't need to update `toolDefinitions.ts` - the SDK uses Zod schemas directly.
+
+See [Model Selection Guide](docs/MODEL_SELECTION.md) for detailed provider comparison.
+
+---
+
 ---
 
 ## Phase 6: Messaging Integration (Optional - 20 min)
@@ -360,7 +432,6 @@ This phase adds WhatsApp/SMS messaging capabilities to your AI Assistant using T
 
 - [ ] WhatsApp Sender or Messaging Service configured in Twilio
 - [ ] Twilio Conversations Service created
-- [ ] (Optional) Twilio Sync Service for typing indicators
 
 ---
 
@@ -372,9 +443,6 @@ Add these to your `.env` file:
 |----------|---------------|---------|
 | `TWILIO_CONVERSATION_SERVICE_SID` | Twilio Console > Conversations > Services | `ISxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
 | `TWILIO_WORKSPACE_SID` | Twilio Console > TaskRouter > Workspaces | `WSxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
-| `TWILIO_SYNC_SERVICE_SID` (optional) | Twilio Console > Sync > Services | `ISxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
-
-**Note:** `TWILIO_SYNC_SERVICE_SID` is only needed for WhatsApp typing indicators.
 
 ---
 
@@ -392,22 +460,7 @@ Add these to your `.env` file:
 
 ---
 
-### Step 9: Configure WhatsApp Sender (for Typing Indicators)
-
-If using typing indicators, configure an additional webhook:
-
-1. Go to [Twilio Console > Messaging > Senders > WhatsApp Senders](https://console.twilio.com/us1/develop/sms/senders/whatsapp-senders)
-2. Select your WhatsApp Sender
-3. Under **Endpoint Configuration**:
-   - **Incoming Message Webhook:** `https://[your-ngrok-domain].ngrok.app/api/conversations/whatsapp-incoming`
-   - **HTTP Method:** `POST`
-4. Click **Save**
-
-**Note:** This webhook runs in parallel with Conversations to send typing indicators immediately.
-
----
-
-### Step 10: Test Messaging
+### Step 9: Test Messaging
 
 1. **Restart your development server** to load new environment variables:
    ```bash
@@ -418,7 +471,7 @@ If using typing indicators, configure an additional webhook:
 2. **Send a WhatsApp message** to your Twilio WhatsApp number
 
 3. **Expected behavior:**
-   - (If Sync configured) Typing indicator appears while bot processes
+   - Typing indicator appears while bot processes
    - AI assistant responds to your message
    - Conversation continues naturally
 
@@ -429,19 +482,17 @@ If using typing indicators, configure an additional webhook:
 
 **Troubleshooting:**
 - **No response:** Check Conversations webhook URL is correct
-- **Typing indicator not showing:** Verify `TWILIO_SYNC_SERVICE_SID` is set and Sync Map is created
 - **Handoff not working:** Check `TWILIO_WORKFLOW_SID` and `TWILIO_WORKSPACE_SID` are correct
 
 ---
 
-### Step 11: Verify Handoff (Messaging)
+### Step 10: Verify Handoff (Messaging)
 
 When handoff occurs in messaging:
 
 1. **Bot creates Flex Interaction** - Task appears in Flex
 2. **Bot webhooks are removed** - Bot stops receiving messages for this conversation
-3. **Sync Map entry is deleted** - Typing indicators stop for this customer
-4. **Agent takes over** - Conversation continues in Flex
+3. **Agent takes over** - Conversation continues in Flex
 
 **To verify:**
 1. Send a message asking for a human agent
@@ -457,7 +508,7 @@ When handoff occurs in messaging:
 - [ ] `TWILIO_WORKSPACE_SID` configured in `.env`
 - [ ] Conversations webhook pointing to `/api/conversations/incoming-message`
 - [ ] WhatsApp message receives AI response
-- [ ] (Optional) Typing indicator appears while processing
+- [ ] Typing indicator appears while processing
 - [ ] Human handoff creates Flex task
 - [ ] Bot stops responding after handoff
 
@@ -473,7 +524,6 @@ When handoff occurs in messaging:
 
 **Messaging:**
 - **Conversations webhook:** `https://[your-ngrok-domain].ngrok.app/api/conversations/incoming-message`
-- **WhatsApp typing indicators:** `https://[your-ngrok-domain].ngrok.app/api/conversations/whatsapp-incoming`
 
 ### Log Files
 Monitor these terminals:
@@ -504,21 +554,6 @@ ngrok http 3000
   - `handleIncomingMessage`: Main message handler (line 12)
   - `handleConversationEvent`: Lifecycle events (line 130)
 - **Customize:** Modify message filtering, session management
-
----
-
-### ⌨️ Typing Indicators
-
-**Typing Controller** - [src/controllers/typingIndicatorController.ts](src/controllers/typingIndicatorController.ts)
-- **What:** Sends WhatsApp typing indicators for active bot conversations
-- **Config:** `TYPING_INDICATOR_DELAY_MS` (line 4) - delay before sending indicator
-- **Requires:** `TWILIO_SYNC_SERVICE_SID` environment variable
-
-**Sync Service** - [src/utils/syncService.ts](src/utils/syncService.ts)
-- **What:** Manages active bot conversations in Twilio Sync Map
-- **Config:**
-  - `SYNC_MAP_NAME`: Name of the Sync Map (line 6)
-  - `ITEM_TTL_SECONDS`: Auto-cleanup after 24 hours (line 7)
 
 ---
 

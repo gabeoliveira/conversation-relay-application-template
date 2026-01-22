@@ -47,6 +47,40 @@ LLM_PROVIDER=openai-responses
 
 **Key difference:** The Responses API uses an `instructions` parameter for the system prompt, which is sent once and cached by OpenAI, potentially reducing token usage in long conversations.
 
+### OpenAI Agents SDK (`openai-agents`) - Advanced
+
+**Best for:** Complex orchestration scenarios, multi-step tool execution, advanced agentic workflows
+
+| Aspect | Details |
+|--------|---------|
+| Stability | Newer SDK, actively developed |
+| Agent Loop | Built-in automatic tool execution loop |
+| Tool Validation | Zod-powered schema validation |
+| Tool Execution | Automatic - SDK handles the loop |
+| Streaming | Full streaming support with event types |
+| Debugging | Built-in tracing capabilities |
+
+```env
+LLM_PROVIDER=openai-agents
+```
+
+**Key differences from other providers:**
+- **Automatic tool execution**: The SDK handles the entire agent loop - when a tool is called, it executes automatically and continues the conversation
+- **Zod schemas required**: Tools must define parameters using Zod schemas (the tool files already export these)
+- **Execute wrappers**: Each tool needs an `execute` function wrapper in the provider, allowing for logging, event emission, and custom behavior
+- **No toolDefinitions.ts needed**: The Agents SDK uses Zod directly, so it doesn't need the JSON Schema conversion
+
+**When to use Agents SDK:**
+- You need complex multi-step tool execution
+- You want automatic tool orchestration without manual loop handling
+- You're building agentic workflows that benefit from built-in tracing
+- You want Zod-powered type safety for tool parameters
+
+**When to stick with Chat Completions/Responses:**
+- You need maximum stability and predictability
+- You want full control over the tool execution loop
+- You're optimizing for simplicity over advanced features
+
 ## Model Selection
 
 ### Available Models
@@ -159,35 +193,52 @@ No code changes required.
 │                 (src/services/llm/factory.ts)                │
 └─────────────────────────────────────────────────────────────┘
                             │
-              ┌─────────────┴─────────────┐
-              │                           │
-              ▼                           ▼
-┌──────────────────────────┐  ┌──────────────────────────┐
-│  OpenAIChatCompletions   │  │   OpenAIResponses        │
-│  Service                 │  │   Service                │
-│  (providers/openai-      │  │  (providers/openai-      │
-│   chat-completions.ts)   │  │   responses.ts)          │
-└──────────────────────────┘  └──────────────────────────┘
-              │                           │
-              └─────────────┬─────────────┘
-                            │
-                            ▼
-              ┌──────────────────────────┐
-              │    Tool Definitions      │
-              │  (tools/toolDefinitions  │
-              │        .ts)              │
-              └──────────────────────────┘
-                            │
-                            ▼
-              ┌──────────────────────────┐
-              │    Tool Converter        │
-              │   (tools/converter.ts)   │
-              │                          │
-              │  Converts tools to       │
-              │  provider-specific       │
-              │  format automatically    │
-              └──────────────────────────┘
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+        ▼                   ▼                   ▼
+┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+│ ChatComplet-  │  │  Responses    │  │  Agents SDK   │
+│ ions Service  │  │  Service      │  │  Service      │
+│ (openai-chat- │  │ (openai-      │  │ (openai-      │
+│ completions)  │  │  responses)   │  │  agents)      │
+└───────┬───────┘  └───────┬───────┘  └───────┬───────┘
+        │                  │                  │
+        │                  │                  │
+        ▼                  ▼                  │
+┌──────────────────────────────────┐          │
+│       Tool Definitions           │          │
+│   (tools/toolDefinitions.ts)     │          │
+│   Auto-generated JSON Schema     │          │
+│   from Zod schemas               │          │
+└──────────────────────────────────┘          │
+                                              │
+                                              ▼
+                              ┌───────────────────────────┐
+                              │   Zod Schemas (direct)    │
+                              │   Each tool file exports: │
+                              │   - schema (Zod)          │
+                              │   - execute function      │
+                              │   - TypeScript types      │
+                              └───────────────────────────┘
 ```
+
+### Tool Schema Architecture
+
+All tools use **Zod schemas as the single source of truth**:
+
+```typescript
+// tools/checkPendingBill.ts
+export const checkPendingBillSchema = z.object({
+  userId: z.string().describe("The user ID")
+});
+
+export type CheckPendingBillParams = z.infer<typeof checkPendingBillSchema>;
+
+export async function checkPendingBill(params: CheckPendingBillParams) { ... }
+```
+
+- **Chat Completions & Responses**: Use `toolDefinitions.ts` which auto-converts Zod to JSON Schema via `zod-to-json-schema`
+- **Agents SDK**: Uses Zod schemas directly with the `tool()` helper and `execute` wrappers
 
 ## Troubleshooting
 

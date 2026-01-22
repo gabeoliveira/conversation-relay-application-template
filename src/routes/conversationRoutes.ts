@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
 import { handleIncomingMessage, handleConversationEvent } from '../controllers/conversationController';
-import { handleIncomingWhatsAppMessage } from '../controllers/typingIndicatorController';
 
 const router = express.Router();
 
@@ -30,22 +29,6 @@ router.post('/conversation-events', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Failed to process conversation event:', error);
     res.status(500).json({ error: 'Failed to process event' });
-  }
-});
-
-// Handle incoming WhatsApp messages from Messaging Service webhook
-// This endpoint sends typing indicators for active bot conversations
-router.post('/whatsapp-incoming', async (req: Request, res: Response) => {
-  try {
-    console.log('Incoming WhatsApp message:', req.body);
-
-    await handleIncomingWhatsAppMessage(req.body);
-
-    // Return empty TwiML to acknowledge the webhook
-    res.type('text/xml').status(200).send('<Response></Response>');
-  } catch (error) {
-    console.error('Failed to process WhatsApp incoming message:', error);
-    res.type('text/xml').status(200).send('<Response></Response>');
   }
 });
 

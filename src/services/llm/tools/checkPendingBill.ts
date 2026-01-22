@@ -1,8 +1,13 @@
+import { z } from "zod";
 import mockData from "../../../data/mock-data";
 
-export interface CheckPendingBillParams {
-  userId: string;
-}
+// Zod schema - single source of truth
+export const checkPendingBillSchema = z.object({
+  userId: z.string().describe("The user ID from verify_user_identity")
+});
+
+// TypeScript type derived from Zod
+export type CheckPendingBillParams = z.infer<typeof checkPendingBillSchema>;
 
 export async function checkPendingBill(
   params: CheckPendingBillParams

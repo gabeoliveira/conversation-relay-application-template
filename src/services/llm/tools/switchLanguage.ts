@@ -1,11 +1,16 @@
+import { z } from "zod";
 import { config } from "../../../config";
 
-export interface switchLanguageParams {
-  targetLanguage: string;
-}
+// Zod schema - single source of truth
+export const switchLanguageSchema = z.object({
+  targetLanguage: z.enum(["portuguese", "english", "spanish"])
+    .describe("The target language to switch to")
+});
 
-export async function switchLanguage(params: switchLanguageParams): Promise<string> {
+// TypeScript type derived from Zod
+export type SwitchLanguageParams = z.infer<typeof switchLanguageSchema>;
 
+export async function switchLanguage(params: SwitchLanguageParams): Promise<string> {
   console.log('Switch Language', params);
 
   if (params.targetLanguage in config.languages) {

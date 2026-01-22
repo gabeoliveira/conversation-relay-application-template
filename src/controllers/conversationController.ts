@@ -4,12 +4,53 @@ import { createLLMService } from '../services/llm/factory';
 import { BaseLLMService } from '../services/llm/types';
 import { ConversationMessage, ConversationEvent } from '../types';
 import { handleConversationHandoff } from '../utils/conversationHandoff';
-import { storeActiveConversation, removeActiveConversation } from '../utils/syncService';
 
 const client = new Twilio(config.twilio.accountSid, config.twilio.authToken);
 
 // Store LLM service instances per conversation
 const conversationSessions = new Map<string, BaseLLMService>();
+
+/**
+ * Sends a typing indicator to WhatsApp by fetching the most recent inbound message.
+ * Uses the Messaging API to get the latest message SID from the customer.
+ */
+async function sendTypingIndicator(customerPhone: string): Promise<void> {
+  try {
+    // Fetch the most recent message from this customer (messages are sorted by DateSent descending)
+    const messages = await client.messages.list({
+      from: customerPhone,
+      limit: 1
+    });
+
+    if (messages.length === 0) {
+      console.log(`No messages found from ${customerPhone}, skipping typing indicator`);
+      return;
+    }
+
+    const messageSid = messages[0].sid;
+
+    const response = await fetch('https://messaging.twilio.com/v2/Indicators/Typing.json', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + Buffer.from(`${config.twilio.accountSid}:${config.twilio.authToken}`).toString('base64')
+      },
+      body: new URLSearchParams({
+        messageId: messageSid,
+        channel: 'whatsapp'
+      }).toString()
+    });
+
+    if (response.ok) {
+      console.log(`Typing indicator sent for message: ${messageSid}`);
+    } else {
+      const errorText = await response.text();
+      console.warn(`Failed to send typing indicator: ${response.status} - ${errorText}`);
+    }
+  } catch (error) {
+    console.warn('Error sending typing indicator:', error);
+  }
+}
 
 export async function handleIncomingMessage(messageData: ConversationMessage): Promise<any> {
   try {
@@ -48,11 +89,65 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
       conversationSessions.set(ConversationSid, llmService);
       console.log(`Created new LLM session for conversation: ${ConversationSid}`);
 
-      // Store in Sync Map so typing indicator webhook knows this is an active bot conversation
-      const customerPhone = String(participant.messagingBinding?.address || '');
-      if (customerPhone) {
-        storeActiveConversation(customerPhone, ConversationSid);
-      }
+      // Register event handlers ONCE when the session is created (not on every message)
+      llmService.on('chatCompletion:complete', async (assistantMessage) => {
+        try {
+          // Send response back to the conversation
+          await client.conversations.v1
+            .conversations(ConversationSid)
+            .messages
+            .create({
+              body: assistantMessage.content || 'Sorry, I had trouble generating a response.',
+              author: 'assistant'
+            });
+
+          console.log(`Response sent to conversation ${ConversationSid}`);
+        } catch (error) {
+          console.error('Failed to send response to conversation:', error);
+        }
+      });
+
+      llmService.on('humanAgentHandoff', async (handoffData) => {
+        try {
+          // Check if already handed off to prevent duplicates
+          const conversation = await client.conversations.v1.conversations(ConversationSid).fetch();
+          const attributes = JSON.parse(conversation.attributes || '{}');
+
+          if (attributes.handedOff) {
+            console.log(`Conversation ${ConversationSid} already handed off, ignoring duplicate request`);
+            return;
+          }
+
+          // Add participant info to handoff data
+          const enrichedHandoffData = {
+            ...handoffData,
+            customerPhone: participant.messagingBinding?.address,
+            proxyAddress: participant.messagingBinding?.proxyAddress,
+            conversationSid: ConversationSid
+          };
+
+          // Use the new handoff function - bot will handle messaging
+          await handleConversationHandoff(ConversationSid, enrichedHandoffData);
+        } catch (error) {
+          console.error('Failed to handoff to human agent:', error);
+        }
+      });
+
+      llmService.once('endInteraction', async () => {
+        try {
+          // Clean up the session
+          conversationSessions.delete(ConversationSid);
+          console.log(`Conversation ${ConversationSid} ended and session cleaned up`);
+        } catch (error) {
+          console.error('Failed to end conversation properly:', error);
+        }
+      });
+    }
+
+    // Send typing indicator before processing (don't await to avoid blocking)
+    const customerPhone = participant.messagingBinding?.address;
+    if (customerPhone) {
+      sendTypingIndicator(String(customerPhone));
     }
 
     // Process the message with LLM
@@ -60,81 +155,6 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
       role: "user" as const,
       content: Body
     };
-
-    // Handle events from LLM service
-    llmService.once('chatCompletion:complete', async (assistantMessage) => {
-      try {
-        // Send response back to the conversation
-        await client.conversations.v1
-          .conversations(ConversationSid)
-          .messages
-          .create({
-            body: assistantMessage.content || 'Sorry, I had trouble generating a response.',
-            author: 'assistant'
-          });
-        
-        console.log(`Response sent to conversation ${ConversationSid}`);
-      } catch (error) {
-        console.error('Failed to send response to conversation:', error);
-      }
-    });
-
-    llmService.once('humanAgentHandoff', async (handoffData) => {
-      try {
-        // Check if already handed off to prevent duplicates
-        const conversation = await client.conversations.v1.conversations(ConversationSid).fetch();
-        const attributes = JSON.parse(conversation.attributes || '{}');
-        
-        if (attributes.handedOff) {
-          console.log(`Conversation ${ConversationSid} already handed off, ignoring duplicate request`);
-          return;
-        }
-
-        // Add participant info to handoff data
-        const enrichedHandoffData = {
-          ...handoffData,
-          customerPhone: participant.messagingBinding?.address,
-          proxyAddress: participant.messagingBinding?.proxyAddress,
-          conversationSid: ConversationSid
-        };
-        
-        // Remove from Sync Map - agent is now handling the conversation
-        const customerPhone = participant.messagingBinding?.address;
-        if (customerPhone) {
-          removeActiveConversation(String(customerPhone));
-        }
-
-        // Use the new handoff function - bot will handle messaging
-        await handleConversationHandoff(ConversationSid, enrichedHandoffData);
-      } catch (error) {
-        console.error('Failed to handoff to human agent:', error);
-      }
-    });
-
-    llmService.once('endInteraction', async () => {
-      try {
-        // Optionally close conversation or mark as completed
-        await client.conversations.v1
-          .conversations(ConversationSid)
-          .messages
-          .create({
-            body: 'Thank you for using our service. This conversation is now complete.',
-            author: 'system'
-          });
-
-        // Remove from Sync Map - conversation is ending
-        const customerPhone = participant.messagingBinding?.address;
-        if (customerPhone) {
-          removeActiveConversation(String(customerPhone));
-        }
-
-        // Clean up the session
-        conversationSessions.delete(ConversationSid);
-        console.log(`Conversation ${ConversationSid} ended and session cleaned up`);
-      } catch (error) {
-        console.error('Failed to end conversation properly:', error);
-      }
-    });
 
     // Get LLM response
     const completion = await llmService.chatCompletion([userMessage]);

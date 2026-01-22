@@ -1,13 +1,18 @@
+import { z } from "zod";
 import { config } from "../../../config";
 
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
 
-export interface identifyUserParams {
-  customerPhone: string;
-}
+// Zod schema - single source of truth
+export const identifyUserSchema = z.object({
+  customerPhone: z.string().describe("Customer's phone number in MSISDN format")
+});
 
-export async function identifyUser(params: identifyUserParams): Promise<string> {
+// TypeScript type derived from Zod
+export type IdentifyUserParams = z.infer<typeof identifyUserSchema>;
+
+export async function identifyUser(params: IdentifyUserParams): Promise<string> {
   console.log("Identifying User", params);
 
   const credentials = process.env.GOOGLE_SERVICE_ACCOUNT_KEY

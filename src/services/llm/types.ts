@@ -83,7 +83,7 @@ export interface CompletionOptions {
 /**
  * LLM Provider types
  */
-export type LLMProvider = 'openai-chat-completions' | 'openai-responses';
+export type LLMProvider = 'openai-chat-completions' | 'openai-responses' | 'openai-agents';
 
 /**
  * Events emitted by LLM services

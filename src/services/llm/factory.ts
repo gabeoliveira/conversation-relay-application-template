@@ -1,6 +1,7 @@
 import { BaseLLMService, LLMProvider, LLMServiceConfig } from "./types";
 import { OpenAIChatCompletionsService } from "./providers/openai-chat-completions";
 import { OpenAIResponsesService } from "./providers/openai-responses";
+import { OpenAIAgentsService } from "./providers/openai-agents";
 import { config } from "../../config";
 
 /**
@@ -47,6 +48,10 @@ export function createLLMService(serviceConfig?: Partial<LLMServiceConfig>): Bas
       console.log('[LLM Factory] Instantiating OpenAIResponsesService...');
       return new OpenAIResponsesService(apiKey);
 
+    case 'openai-agents':
+      console.log('[LLM Factory] Instantiating OpenAIAgentsService...');
+      return new OpenAIAgentsService(apiKey);
+
     case 'openai-chat-completions':
     default:
       console.log('[LLM Factory] Instantiating OpenAIChatCompletionsService...');
@@ -58,7 +63,7 @@ export function createLLMService(serviceConfig?: Partial<LLMServiceConfig>): Bas
  * Get the list of available LLM providers
  */
 export function getAvailableProviders(): LLMProvider[] {
-  return ['openai-chat-completions', 'openai-responses'];
+  return ['openai-chat-completions', 'openai-responses', 'openai-agents'];
 }
 
 /**

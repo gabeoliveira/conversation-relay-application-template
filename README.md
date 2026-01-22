@@ -12,9 +12,9 @@ A Twilio ConversationRelay project for building AI-powered assistants that work 
 
 - **Voice Channel**: REST API endpoint for incoming calls with WebSocket real-time communication
 - **Messaging Channel**: Twilio Conversations integration for WhatsApp and SMS
-- **Multi-Provider LLM Service**: Supports OpenAI Chat Completions API and Responses API with streaming and non-streaming responses
+- **Multi-Provider LLM Service**: Supports OpenAI Chat Completions API, Responses API, and Agents SDK with streaming and non-streaming responses
 - **Human Agent Handoff**: Seamless transfer to Twilio Flex agents for both voice and messaging
-- **Typing Indicators**: Optional WhatsApp typing indicators for improved user experience (requires Twilio Sync)
+- **Typing Indicators**: WhatsApp typing indicators for improved user experience
 - **Tool Integration**: Extensible tool system for custom business logic
 - Jest for unit testing
 
@@ -26,7 +26,6 @@ A Twilio ConversationRelay project for building AI-powered assistants that work 
   - A phone number configured for voice and/or messaging
   - Twilio Flex (for human agent handoff)
   - Twilio Conversations Service
-  - Twilio Sync Service (optional, for typing indicators)
 
 ## Setup
 
@@ -75,9 +74,8 @@ Open `.env` and configure the following variables:
 | ------------------------------ | ------------------------------------------------------- | ------------------------- |
 | `NGROK_DOMAIN`                 | Your ngrok domain (without https://)                    | -                         |
 | `WELCOME_GREETING`             | Message played/sent to users on first contact           | -                         |
-| `TWILIO_SYNC_SERVICE_SID`      | Sync Service SID for typing indicators feature          | -                         |
 | `OPENAI_MAX_COMPLETION_TOKENS` | Max tokens for LLM responses (150-200 recommended)      | -                         |
-| `LLM_PROVIDER`                 | LLM provider: `openai-chat-completions` or `openai-responses` | `openai-chat-completions` |
+| `LLM_PROVIDER`                 | LLM provider: `openai-chat-completions`, `openai-responses`, or `openai-agents` | `openai-chat-completions` |
 | `LLM_MODEL`                    | OpenAI model to use (see [Model Selection Guide](docs/MODEL_SELECTION.md)) | `gpt-4.1`                 |
 | `GOOGLESHEETS_SPREADSHEET_ID`  | Google Sheets ID for tools integration                  | -                         |
 | `GOOGLE_CALENDAR_ID`           | Google Calendar ID for booking tools                    | -                         |
@@ -101,12 +99,6 @@ Open `.env` and configure the following variables:
 3. Under **Webhooks**, add:
    - **Post-Event URL**: `https://[your-ngrok-domain].ngrok.app/api/conversations/incoming-message`
    - **Events**: `onMessageAdded`
-
-#### For Typing Indicators (Optional)
-
-If using typing indicators, configure an additional webhook on your **Messaging Service** or **WhatsApp Sender**:
-
-- **Incoming Message Webhook**: `https://[your-ngrok-domain].ngrok.app/api/conversations/whatsapp-incoming`
 
 ### 5. Run the app
 
@@ -165,7 +157,7 @@ The system supports seamless handoff to human agents via Twilio Flex for both ch
 2. **Flex Interaction Created**: A TaskRouter task is created and routed to available agents
 3. **Bot Disconnects**:
    - **Voice**: The call is transferred to Flex
-   - **Messaging**: Bot webhooks are removed from the conversation, and the Sync Map entry is deleted (if using typing indicators)
+   - **Messaging**: Bot webhooks are removed from the conversation
 4. **Agent Takes Over**: The human agent continues the conversation in Flex
 
 ### Handoff for Voice
@@ -183,26 +175,10 @@ When handoff occurs during a messaging conversation ([conversationHandoff.ts](sr
 1. A Flex Interaction is created via the Interactions API
 2. Bot webhooks are removed from the conversation (identified by `NGROK_DOMAIN`)
 3. The conversation is marked as handed off in its attributes
-4. The Sync Map entry is removed (stops typing indicators for this customer)
 
 ## Typing Indicators (WhatsApp)
 
-This feature shows a "typing..." indicator to WhatsApp users while the bot processes their message.
-
-### Requirements
-
-- `TWILIO_SYNC_SERVICE_SID` environment variable configured
-- WhatsApp Sender or Messaging Service webhook pointing to `/api/conversations/whatsapp-incoming`
-
-### How It Works
-
-1. When a bot session starts, the customer phone is stored in a Twilio Sync Map
-2. Incoming WhatsApp messages trigger the `/whatsapp-incoming` endpoint
-3. The endpoint checks the Sync Map to see if this customer has an active bot conversation
-4. If yes, a typing indicator is sent via the Twilio Messaging API
-5. When handoff occurs or conversation ends, the Sync Map entry is removed
-
-This ensures typing indicators are only shown when the bot is handling the conversation, not when a human agent is.
+Typing indicators are automatically sent when processing WhatsApp messages, showing users that the bot is preparing a response. The indicator is sent by fetching the most recent inbound message from the customer via the Messaging API and triggering the typing indicator for that message.
 
 ## API Endpoints
 
@@ -219,7 +195,6 @@ This ensures typing indicators are only shown when the bot is handling the conve
 | ---------------------------------------- | ------ | -------------------------------------------------------- |
 | `/api/conversations/incoming-message`    | POST   | Process incoming Conversations messages                  |
 | `/api/conversations/conversation-events` | POST   | Handle conversation events (participant added/removed)   |
-| `/api/conversations/whatsapp-incoming`   | POST   | Process incoming WhatsApp messages for typing indicators |
 | `/api/conversations/message-status`      | POST   | Handle message delivery receipts                         |
 
 ## Controllers
@@ -232,9 +207,8 @@ This ensures typing indicators are only shown when the bot is handling the conve
 
 ### Messaging Controllers
 
-- **handleIncomingMessage**: Processes incoming Conversations messages, manages LLM sessions ([conversationController.ts](src/controllers/conversationController.ts))
+- **handleIncomingMessage**: Processes incoming Conversations messages, manages LLM sessions, sends typing indicators ([conversationController.ts](src/controllers/conversationController.ts))
 - **handleConversationEvent**: Handles conversation lifecycle events ([conversationController.ts](src/controllers/conversationController.ts))
-- **handleIncomingWhatsAppMessage**: Manages typing indicators for WhatsApp ([typingIndicatorController.ts](src/controllers/typingIndicatorController.ts))
 
 ## Services
 
@@ -242,12 +216,13 @@ This ensures typing indicators are only shown when the bot is handling the conve
 
 Multi-provider LLM service with factory pattern for provider selection:
 
-- **Providers**: OpenAI Chat Completions API (`openai-chat-completions`) and Responses API (`openai-responses`)
+- **Providers**: OpenAI Chat Completions API (`openai-chat-completions`), Responses API (`openai-responses`), and Agents SDK (`openai-agents`)
 - **Factory**: [factory.ts](src/services/llm/factory.ts) - Creates the appropriate service based on `LLM_PROVIDER` config
 - **Chat Completions**: [openai-chat-completions.ts](src/services/llm/providers/openai-chat-completions.ts) - Stable, well-tested API
 - **Responses API**: [openai-responses.ts](src/services/llm/providers/openai-responses.ts) - Uses `instructions` parameter for efficient system prompt handling
+- **Agents SDK**: [openai-agents.ts](src/services/llm/providers/openai-agents.ts) - Built-in agent loop with automatic tool execution (advanced)
 
-Both providers support:
+All providers support:
 - Streaming (voice) and non-streaming (messaging) responses
 - Tool calls and function execution
 - Events for handoff, conversation end, and completion
@@ -258,14 +233,6 @@ See [Model Selection Guide](docs/MODEL_SELECTION.md) for detailed provider and m
 ### WebSocket Service
 
 Real-time communication for voice calls ([websocketService.ts](src/services/llm/websocketService.ts))
-
-### Sync Service
-
-Manages active bot conversations in Twilio Sync for typing indicators ([syncService.ts](src/utils/syncService.ts)):
-
-- `storeActiveConversation`: Stores customer phone when bot session starts
-- `getActiveConversation`: Checks if customer has active bot session
-- `removeActiveConversation`: Removes entry on handoff or conversation end
 
 ## Tools
 
@@ -306,8 +273,7 @@ src/
 ├── controllers/
 │   ├── callController.ts           # Voice call handling
 │   ├── connectActionController.ts  # Studio actions
-│   ├── conversationController.ts   # Messaging handling
-│   └── typingIndicatorController.ts # WhatsApp typing
+│   └── conversationController.ts   # Messaging handling + typing indicators
 ├── routes/
 │   ├── callRoutes.ts               # Voice endpoints
 │   ├── connectActionRoutes.ts      # Action endpoints
@@ -318,13 +284,14 @@ src/
 │   ├── websocketService.ts         # Voice WebSocket
 │   ├── providers/
 │   │   ├── openai-chat-completions.ts  # Chat Completions API
-│   │   └── openai-responses.ts         # Responses API
+│   │   ├── openai-responses.ts         # Responses API
+│   │   └── openai-agents.ts            # Agents SDK (advanced)
 │   └── tools/                      # LLM tools
-│       ├── toolDefinitions.ts      # Tool definitions (single source)
+│       ├── toolDefinitions.ts      # Tool definitions (auto-generated from Zod)
+│       ├── *.ts                    # Individual tools with Zod schemas
 │       └── converter.ts            # Tool format converter
 ├── utils/
-│   ├── conversationHandoff.ts      # Flex handoff logic
-│   └── syncService.ts              # Sync Map management
+│   └── conversationHandoff.ts      # Flex handoff logic
 ├── types/
 │   └── index.ts                    # TypeScript types
 └── data/

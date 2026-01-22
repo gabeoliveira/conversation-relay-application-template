@@ -1,36 +1,33 @@
+import { z } from "zod";
 import mockData from "../../../data/mock-data";
 
-enum InquirerType {
-   DEDUCTIBLE,
-   COPAY,
-   HSA,
-   OUT_OF_POCKET_MAX,
-}
+// Zod schema - single source of truth
+export const searchCommonMedicalTermsSchema = z.object({
+  inquiry: z.enum(["DEDUCTIBLE", "COPAY", "HSA", "OUT_OF_POCKET_MAX"])
+    .describe("The medical term to search for")
+});
+
+// TypeScript type derived from Zod
+export type SearchCommonMedicalTermsParams = z.infer<typeof searchCommonMedicalTermsSchema>;
 
 export async function searchCommonMedicalTerms(
-   inquiry: InquirerType | string | { inquiry: string }
+  params: SearchCommonMedicalTermsParams
 ): Promise<string> {
+  const normalizedInquiry = params.inquiry.toUpperCase();
 
-   const normalizedInquiry = 
-     typeof inquiry === "object" && "inquiry" in inquiry 
-       ? inquiry.inquiry.toUpperCase()
-       : typeof inquiry === "string"
-         ? inquiry.toUpperCase()
-         : InquirerType[inquiry];
+  const inquiryKeyMap: {
+    [key: string]: keyof typeof mockData.common_terms;
+  } = {
+    DEDUCTIBLE: "deductible",
+    COPAY: "copay",
+    HSA: "hsa",
+    OUT_OF_POCKET_MAX: "out_of_pocket_max",
+  };
 
-   const inquiryKeyMap: {
-     [key: string]: keyof typeof mockData.common_terms;
-   } = {
-     DEDUCTIBLE: "deductible",
-     COPAY: "copay",
-     HSA: "hsa",
-     OUT_OF_POCKET_MAX: "out_of_pocket_max",
-   };
+  const term = mockData.common_terms[inquiryKeyMap[normalizedInquiry]];
 
-   const term = mockData.common_terms[inquiryKeyMap[normalizedInquiry]];
-
-   return (
-     term ||
-     "No information found. Please let the caller know that you could not find the information they were looking for."
-   );
+  return (
+    term ||
+    "No information found. Please let the caller know that you could not find the information they were looking for."
+  );
 }

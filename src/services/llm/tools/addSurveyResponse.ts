@@ -1,15 +1,20 @@
+import { z } from "zod";
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
 
 import { config } from "../../../config";
 
-export interface AddSurveyResponseParams {
-  customerPhone: string;
-  inGeneral: string;
-  lastService: string;
-  lastDriver: string;
-  observations?: string;
-}
+// Zod schema - single source of truth
+export const addSurveyResponseSchema = z.object({
+  customerPhone: z.string().describe("Customer's phone number"),
+  inGeneral: z.string().describe("General satisfaction (1-5 as string)"),
+  lastService: z.string().describe("Last service satisfaction (1-5 as string)"),
+  lastDriver: z.string().describe("Last driver satisfaction (1-5 as string)"),
+  observations: z.string().optional().describe("Customer's comments")
+});
+
+// TypeScript type derived from Zod
+export type AddSurveyResponseParams = z.infer<typeof addSurveyResponseSchema>;
 
 export async function addSurveyResponse(params: AddSurveyResponseParams): Promise<string> {
   console.log("Adding Survey Response", params);

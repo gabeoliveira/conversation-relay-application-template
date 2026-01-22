@@ -1,4 +1,7 @@
+// Tool definitions (auto-generated from Zod schemas) + re-exported schemas
 export * from './toolDefinitions';
+
+// Individual tools with their Zod schemas and implementations
 export * from './getCurrentWeather';
 export * from './troubleshootLoginIssues';
 export * from './checkIncreaseLimit';

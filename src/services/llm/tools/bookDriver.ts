@@ -1,18 +1,23 @@
+import { z } from "zod";
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
 
 import { config } from "../../../config";
 
-export interface BookSlotParams {
-  date: string;      // e.g. "2025-05-12"
-  time: string;      // e.g. "15:00" (24-hour format)
-  duration: number;
-  summary: string;
-  description?: string;
-  timezone?: string; // default: 'America/Bogota'
-}
+// Zod schema - single source of truth
+export const bookDriverSchema = z.object({
+  date: z.string().describe("Date of the booking in YYYY-MM-DD format"),
+  time: z.string().describe("Time of the booking in HH:mm format (24h)"),
+  duration: z.number().describe("Duration of the booking in minutes"),
+  summary: z.string().describe("Customer name as summary of the booking"),
+  description: z.string().optional().describe("Optional description for the booking"),
+  timezone: z.string().optional().describe("Timezone (default: America/Bogota)")
+});
 
-export async function bookDriver(params: BookSlotParams): Promise<string> {
+// TypeScript type derived from Zod
+export type BookDriverParams = z.infer<typeof bookDriverSchema>;
+
+export async function bookDriver(params: BookDriverParams): Promise<string> {
   console.log("Booking slot with params:", params);
 
   const credentials = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
