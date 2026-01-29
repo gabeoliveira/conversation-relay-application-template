@@ -10,12 +10,17 @@ const client = new Twilio(config.twilio.accountSid, config.twilio.authToken);
 // Store LLM service instances per conversation
 const conversationSessions = new Map<string, BaseLLMService>();
 
+// Delay before sending typing indicator to ensure message data is available in Twilio's system
+const TYPING_INDICATOR_DELAY_MS = 1000;
+
 /**
  * Sends a typing indicator to WhatsApp by fetching the most recent inbound message.
  * Uses the Messaging API to get the latest message SID from the customer.
  */
 async function sendTypingIndicator(customerPhone: string): Promise<void> {
   try {
+    // Wait to ensure the message is fully processed and available in the Messaging API
+    await new Promise(resolve => setTimeout(resolve, TYPING_INDICATOR_DELAY_MS));
     // Fetch the most recent message from this customer (messages are sorted by DateSent descending)
     const messages = await client.messages.list({
       from: customerPhone,

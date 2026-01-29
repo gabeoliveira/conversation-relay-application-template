@@ -230,6 +230,205 @@ All providers support:
 
 See [Model Selection Guide](docs/MODEL_SELECTION.md) for detailed provider and model recommendations.
 
+### Adding Your Own LLM Provider
+
+To integrate a custom LLM provider (e.g., Anthropic Claude, Google Gemini, Azure OpenAI), follow these steps:
+
+#### 1. Create a Provider Class
+
+Create a new file in [src/services/llm/providers/](src/services/llm/providers/) (e.g., `anthropic-claude.ts`) that implements the `BaseLLMService` interface:
+
+```typescript
+import { EventEmitter } from 'events';
+import { BaseLLMService, LLMMessage, ChatCompletionResponse } from '../types';
+
+export class AnthropicClaudeService extends EventEmitter implements BaseLLMService {
+  private conversationHistory: LLMMessage[] = [];
+
+  async setup(context: any): Promise<void> {
+    // Initialize your LLM client
+    // Store context (conversationSid, customerPhone, etc.)
+  }
+
+  async chatCompletion(
+    messages: LLMMessage[],
+    options?: { streamSid?: string }
+  ): Promise<ChatCompletionResponse> {
+    this.conversationHistory.push(...messages);
+
+    if (options?.streamSid) {
+      // Streaming mode (for voice)
+      // Send delta updates via this.emit('streamDelta', { content })
+      // End with this.emit('streamComplete')
+    } else {
+      // Non-streaming mode (for messaging)
+      // Return full response
+    }
+
+    // Handle tool calls if your LLM supports them
+    // Emit events: 'humanAgentHandoff', 'switchLanguage', 'endInteraction'
+  }
+
+  async executeToolCall(toolName: string, args: any): Promise<string> {
+    // Map tool names to implementations
+    // Import from src/services/llm/tools/
+  }
+}
+```
+
+#### 2. Key Methods to Implement
+
+- **setup(context)**: Initialize your LLM client with API keys and context
+- **chatCompletion(messages, options)**: Main inference method
+  - For **voice** (streaming): Emit `streamDelta` events with text chunks, end with `streamComplete`
+  - For **messaging** (non-streaming): Return complete response as `ChatCompletionResponse`
+- **executeToolCall(toolName, args)**: Execute function calls from your LLM
+
+#### 3. Event Emitters
+
+Your provider should emit these events for proper integration:
+
+```typescript
+// Streaming events (voice)
+this.emit('streamDelta', { content: 'text chunk' });
+this.emit('streamComplete');
+
+// Completion events (messaging)
+this.emit('chatCompletion:complete', { content: 'full response' });
+
+// Special behavior events
+this.emit('humanAgentHandoff', { reason: 'user requested' });
+this.emit('switchLanguage', { language: 'pt-BR' });
+this.emit('endInteraction');
+```
+
+#### 4. Update the Factory
+
+Add your provider to [src/services/llm/factory.ts](src/services/llm/factory.ts):
+
+```typescript
+import { AnthropicClaudeService } from './providers/anthropic-claude';
+
+export function createLLMService(): BaseLLMService {
+  const provider = config.llm.provider;
+
+  switch (provider) {
+    case 'openai-chat-completions':
+      return new OpenAIChatCompletionsService();
+    case 'openai-responses':
+      return new OpenAIResponsesService();
+    case 'openai-agents':
+      return new OpenAIAgentsService();
+    case 'anthropic-claude':
+      return new AnthropicClaudeService();
+    default:
+      throw new Error(`Unknown LLM provider: ${provider}`);
+  }
+}
+```
+
+#### 5. Add Configuration
+
+Update [src/config.ts](src/config.ts) to add your provider as an option:
+
+```typescript
+const configSchema = z.object({
+  // ...
+  LLM_PROVIDER: z.enum([
+    'openai-chat-completions',
+    'openai-responses',
+    'openai-agents',
+    'anthropic-claude'  // Add your provider
+  ]).optional().default('openai-chat-completions'),
+
+  // Add any provider-specific config
+  ANTHROPIC_API_KEY: z.string().optional(),
+  // ...
+});
+```
+
+#### 6. Tool Integration
+
+If your LLM supports function calling:
+
+- Use the Zod schemas from [src/services/llm/tools/](src/services/llm/tools/)
+- Convert Zod schemas to your LLM's tool format
+- In `executeToolCall()`, map tool names to implementations:
+
+```typescript
+import { humanAgentHandoff, checkCardDelivery } from '../tools';
+
+async executeToolCall(toolName: string, args: any): Promise<string> {
+  switch (toolName) {
+    case 'humanAgentHandoff':
+      this.emit('humanAgentHandoff', args);
+      return 'Transferring to agent...';
+    case 'check_card_delivery':
+      return await checkCardDelivery(args);
+    default:
+      return `Unknown tool: ${toolName}`;
+  }
+}
+```
+
+#### 7. Testing
+
+Test both voice and messaging modes:
+
+- **Voice**: Ensure streaming works via `streamDelta` events
+- **Messaging**: Verify complete responses are returned
+- **Tools**: Test function calling and event emissions
+- **Handoff**: Confirm `humanAgentHandoff` event triggers properly
+
+#### Example: Anthropic Claude Integration
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+
+export class AnthropicClaudeService extends EventEmitter implements BaseLLMService {
+  private client: Anthropic;
+  private conversationHistory: LLMMessage[] = [];
+
+  async setup(context: any): Promise<void> {
+    this.client = new Anthropic({
+      apiKey: config.anthropic.apiKey
+    });
+  }
+
+  async chatCompletion(messages: LLMMessage[], options?: { streamSid?: string }) {
+    this.conversationHistory.push(...messages);
+
+    if (options?.streamSid) {
+      // Streaming for voice
+      const stream = await this.client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1024,
+        messages: this.conversationHistory,
+        stream: true
+      });
+
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta') {
+          this.emit('streamDelta', { content: event.delta.text });
+        }
+      }
+      this.emit('streamComplete');
+    } else {
+      // Non-streaming for messaging
+      const response = await this.client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1024,
+        messages: this.conversationHistory
+      });
+
+      const content = response.content[0].text;
+      this.emit('chatCompletion:complete', { content });
+      return { content };
+    }
+  }
+}
+```
+
 ### WebSocket Service
 
 Real-time communication for voice calls ([websocketService.ts](src/services/llm/websocketService.ts))
