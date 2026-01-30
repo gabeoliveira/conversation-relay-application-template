@@ -4,6 +4,8 @@ import { createLLMService } from '../services/llm/factory';
 import { BaseLLMService } from '../services/llm/types';
 import { ConversationMessage, ConversationEvent } from '../types';
 import { handleConversationHandoff } from '../utils/conversationHandoff';
+import logger from '../utils/logger';
+import { withRetry } from '../utils/retry';
 
 const client = new Twilio(config.twilio.accountSid, config.twilio.authToken);
 
@@ -22,13 +24,14 @@ async function sendTypingIndicator(customerPhone: string): Promise<void> {
     // Wait to ensure the message is fully processed and available in the Messaging API
     await new Promise(resolve => setTimeout(resolve, TYPING_INDICATOR_DELAY_MS));
     // Fetch the most recent message from this customer (messages are sorted by DateSent descending)
-    const messages = await client.messages.list({
-      from: customerPhone,
-      limit: 1
-    });
+    const messages = await withRetry(
+      () => client.messages.list({ from: customerPhone, limit: 1 }),
+      { maxRetries: 2 },
+      { operation: 'fetch messages for typing indicator', customerPhone }
+    );
 
     if (messages.length === 0) {
-      console.log(`No messages found from ${customerPhone}, skipping typing indicator`);
+      logger.debug('No messages found for typing indicator', { customerPhone });
       return;
     }
 
@@ -47,13 +50,18 @@ async function sendTypingIndicator(customerPhone: string): Promise<void> {
     });
 
     if (response.ok) {
-      console.log(`Typing indicator sent for message: ${messageSid}`);
+      logger.debug('Typing indicator sent', { messageSid, customerPhone });
     } else {
       const errorText = await response.text();
-      console.warn(`Failed to send typing indicator: ${response.status} - ${errorText}`);
+      logger.warn('Failed to send typing indicator', {
+        status: response.status,
+        error: errorText,
+        messageSid,
+        customerPhone
+      });
     }
   } catch (error) {
-    console.warn('Error sending typing indicator:', error);
+    logger.warn('Error sending typing indicator', { error, customerPhone });
   }
 }
 
@@ -72,10 +80,14 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
     }
 
     // Get participant details to extract phone number
-    const participant = await client.conversations.v1
-      .conversations(ConversationSid)
-      .participants(ParticipantSid)
-      .fetch();
+    const participant = await withRetry(
+      () => client.conversations.v1
+        .conversations(ConversationSid)
+        .participants(ParticipantSid)
+        .fetch(),
+      {},
+      { operation: 'fetch participant', conversationSid: ConversationSid, participantSid: ParticipantSid }
+    );
 
     // Get or create LLM service instance for this conversation
     let llmService = conversationSessions.get(ConversationSid);
@@ -92,34 +104,42 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
       });
 
       conversationSessions.set(ConversationSid, llmService);
-      console.log(`Created new LLM session for conversation: ${ConversationSid}`);
+      logger.info('LLM session created', { conversationSid: ConversationSid, participantSid: ParticipantSid });
 
       // Register event handlers ONCE when the session is created (not on every message)
       llmService.on('chatCompletion:complete', async (assistantMessage) => {
         try {
           // Send response back to the conversation
-          await client.conversations.v1
-            .conversations(ConversationSid)
-            .messages
-            .create({
-              body: assistantMessage.content || 'Sorry, I had trouble generating a response.',
-              author: 'assistant'
-            });
+          await withRetry(
+            () => client.conversations.v1
+              .conversations(ConversationSid)
+              .messages
+              .create({
+                body: assistantMessage.content || 'Sorry, I had trouble generating a response.',
+                author: 'assistant'
+              }),
+            {},
+            { operation: 'send message to conversation', conversationSid: ConversationSid }
+          );
 
-          console.log(`Response sent to conversation ${ConversationSid}`);
+          logger.info('Response sent to conversation', { conversationSid: ConversationSid });
         } catch (error) {
-          console.error('Failed to send response to conversation:', error);
+          logger.error('Failed to send response to conversation', { error, conversationSid: ConversationSid });
         }
       });
 
       llmService.on('humanAgentHandoff', async (handoffData) => {
         try {
           // Check if already handed off to prevent duplicates
-          const conversation = await client.conversations.v1.conversations(ConversationSid).fetch();
+          const conversation = await withRetry(
+            () => client.conversations.v1.conversations(ConversationSid).fetch(),
+            {},
+            { operation: 'fetch conversation for handoff check', conversationSid: ConversationSid }
+          );
           const attributes = JSON.parse(conversation.attributes || '{}');
 
           if (attributes.handedOff) {
-            console.log(`Conversation ${ConversationSid} already handed off, ignoring duplicate request`);
+            logger.info('Conversation already handed off, ignoring duplicate', { conversationSid: ConversationSid });
             return;
           }
 
@@ -134,7 +154,7 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
           // Use the new handoff function - bot will handle messaging
           await handleConversationHandoff(ConversationSid, enrichedHandoffData);
         } catch (error) {
-          console.error('Failed to handoff to human agent:', error);
+          logger.error('Failed to handoff to human agent', { error, conversationSid: ConversationSid });
         }
       });
 
@@ -142,9 +162,9 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
         try {
           // Clean up the session
           conversationSessions.delete(ConversationSid);
-          console.log(`Conversation ${ConversationSid} ended and session cleaned up`);
+          logger.info('Conversation ended and session cleaned up', { conversationSid: ConversationSid });
         } catch (error) {
-          console.error('Failed to end conversation properly:', error);
+          logger.error('Failed to end conversation properly', { error, conversationSid: ConversationSid });
         }
       });
     }
@@ -167,7 +187,7 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
     return { message: 'Message processed successfully' };
 
   } catch (error) {
-    console.error('Error processing incoming message:', error);
+    logger.error('Error processing incoming message', { error, conversationSid: messageData.ConversationSid });
     throw error;
   }
 }
@@ -175,8 +195,8 @@ export async function handleIncomingMessage(messageData: ConversationMessage): P
 export async function handleConversationEvent(eventData: ConversationEvent): Promise<any> {
   try {
     const { ConversationSid, EventType, ParticipantSid } = eventData;
-    
-    console.log(`Conversation event: ${EventType} for ${ConversationSid}`);
+
+    logger.info('Conversation event received', { eventType: EventType, conversationSid: ConversationSid, participantSid: ParticipantSid });
     
     switch (EventType) {
       case 'onParticipantAdded':
@@ -189,37 +209,42 @@ export async function handleConversationEvent(eventData: ConversationEvent): Pro
       case 'onParticipantRemoved':
         // Clean up session when user leaves
         conversationSessions.delete(ConversationSid);
-        console.log(`Cleaned up session for conversation: ${ConversationSid}`);
+        logger.info('Session cleaned up (participant removed)', { conversationSid: ConversationSid });
         break;
         
       case 'onConversationRemoved':
         // Clean up when conversation is deleted
         conversationSessions.delete(ConversationSid);
-        console.log(`Conversation deleted, cleaned up session: ${ConversationSid}`);
+        logger.info('Session cleaned up (conversation removed)', { conversationSid: ConversationSid });
         break;
-        
+
       default:
-        console.log(`Unhandled event type: ${EventType}`);
+        logger.debug('Unhandled event type', { eventType: EventType, conversationSid: ConversationSid });
     }
     
     return { message: 'Event processed successfully' };
     
   } catch (error) {
-    console.error('Error processing conversation event:', error);
+    logger.error('Error processing conversation event', { error, eventData });
     throw error;
   }
 }
 
 async function sendWelcomeMessage(conversationSid: string): Promise<void> {
   try {
-    await client.conversations.v1
-      .conversations(conversationSid)
-      .messages
-      .create({
-        body: config.twilio.welcomeGreeting,
-        author: 'assistant'
-      });
+    await withRetry(
+      () => client.conversations.v1
+        .conversations(conversationSid)
+        .messages
+        .create({
+          body: config.twilio.welcomeGreeting,
+          author: 'assistant'
+        }),
+      {},
+      { operation: 'send welcome message', conversationSid }
+    );
+    logger.info('Welcome message sent', { conversationSid });
   } catch (error) {
-    console.error('Failed to send welcome message:', error);
+    logger.error('Failed to send welcome message', { error, conversationSid });
   }
 }

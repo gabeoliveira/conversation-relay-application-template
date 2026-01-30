@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
 import { handleIncomingCall, makeOutboundCall, generateOutboundCallTwiML, initiateRecording, OutboundCallParams } from '../controllers/callController';
+import logger from '../utils/logger';
+import { twilioWebhookValidation } from '../middleware/twilioWebhookValidation';
 
 const router = express.Router();
 
@@ -9,22 +11,26 @@ const MAX_RETRIES = 5; // Max retry attempts
 const tryStartRecording = async (CallSid: string, attempt: number = 1) => {
   try {
     await initiateRecording(CallSid);
-    console.log('Recording started successfully');
+    logger.info('Recording started successfully', { callSid: CallSid });
   } catch (error) {
     if (attempt < MAX_RETRIES) {
-      console.log(`Retrying to start recording (Attempt ${attempt})...`);
+      logger.warn('Retrying to start recording', { callSid: CallSid, attempt });
       setTimeout(() => tryStartRecording(CallSid, attempt + 1), RETRY_DELAY);
     } else {
-      console.error('Unable to start recording after multiple attempts:', error);
+      logger.error('Unable to start recording after multiple attempts', { error, callSid: CallSid, attempts: MAX_RETRIES });
     }
   }
 };
 
-router.post('/incoming-call', async (req: Request, res: Response) => {
+router.post('/incoming-call', twilioWebhookValidation, async (req: Request, res: Response) => {
   try {
     const callDetails = await handleIncomingCall(req.body);
+    logger.info('Incoming call processed', {
+      requestId: req.requestId,
+      callSid: req.body.CallSid,
+      from: req.body.From
+    });
     res.type('text/xml');
-    console.log('Incoming call', callDetails);
     res.status(200).send(callDetails);
 
     // Attempt to start recording with a retry mechanism
@@ -51,7 +57,7 @@ router.post('/outbound-call', async (req: Request, res: Response) => {
     const result = await makeOutboundCall(params);
     res.status(200).json(result);
   } catch (error) {
-    console.error('Failed to initiate outbound call:', error);
+    logger.error('Failed to initiate outbound call', { error, requestId: req.requestId });
     res.status(500).json({
       error: 'Failed to initiate outbound call',
       message: error instanceof Error ? error.message : 'Unknown error'
@@ -60,7 +66,7 @@ router.post('/outbound-call', async (req: Request, res: Response) => {
 });
 
 // Route that serves TwiML for outbound calls (called by Twilio)
-router.post('/outbound-call-twiml', async (req: Request, res: Response) => {
+router.post('/outbound-call-twiml', twilioWebhookValidation, async (req: Request, res: Response) => {
   try {
     // Extract custom parameters from query string
     let customParameters: Record<string, string> | undefined;
@@ -77,23 +83,22 @@ router.post('/outbound-call-twiml', async (req: Request, res: Response) => {
     res.type('text/xml');
     res.status(200).send(twiml);
   } catch (error) {
-    console.error('Failed to generate outbound call TwiML:', error);
+    logger.error('Failed to generate outbound call TwiML', { error, requestId: req.requestId });
     res.status(500).json({ error: 'Failed to generate TwiML' });
   }
 });
 
 // Route to receive call status callbacks
-router.post('/call-status', async (req: Request, res: Response) => {
+router.post('/call-status', twilioWebhookValidation, async (req: Request, res: Response) => {
   const { CallSid, CallStatus, To, From } = req.body;
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📊 [Call Status] Update received');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📞 Call SID:', CallSid);
-  console.log('📊 Status:', CallStatus);
-  console.log('📲 To:', To);
-  console.log('📱 From:', From);
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  logger.info('Call status update received', {
+    requestId: req.requestId,
+    callSid: CallSid,
+    status: CallStatus,
+    to: To,
+    from: From
+  });
 
   res.status(200).send('OK');
 });

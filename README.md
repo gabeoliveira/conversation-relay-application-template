@@ -182,6 +182,13 @@ Typing indicators are automatically sent when processing WhatsApp messages, show
 
 ## API Endpoints
 
+### Health Check Endpoints
+
+| Endpoint  | Method | Description                                                                |
+| --------- | ------ | -------------------------------------------------------------------------- |
+| `/health` | GET    | Health check for load balancers and monitoring (returns service status)   |
+| `/ready`  | GET    | Readiness check for Kubernetes/orchestration (verifies dependencies)      |
+
 ### Voice Endpoints
 
 | Endpoint             | Method | Description                                                |
@@ -496,6 +503,161 @@ src/
 └── data/
     └── mock-data.ts                # Mock data for tools
 ```
+
+## Production Deployment
+
+### Health Checks
+
+The application provides two health check endpoints for production deployments:
+
+- **`/health`** - Liveness probe
+  - Returns 200 OK if the service is running
+  - Use for load balancer health checks
+  - Includes uptime and timestamp information
+
+- **`/ready`** - Readiness probe
+  - Returns 200 OK if the service is ready to accept traffic
+  - Use for Kubernetes readiness probes
+  - Can be extended to check external dependencies (database, Redis, etc.)
+
+**Example health check response:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-01-30T10:30:00.000Z",
+  "uptime": 3600,
+  "environment": "production"
+}
+```
+
+**Load Balancer Configuration:**
+- Health check path: `/health`
+- Expected status code: `200`
+- Check interval: `30 seconds`
+- Timeout: `5 seconds`
+- Unhealthy threshold: `2 consecutive failures`
+
+### Structured Logging
+
+The application uses **Winston** for structured logging with the following features:
+
+- **JSON formatted logs** for easy parsing by log aggregation tools
+- **Log levels**: error, warn, info, debug
+- **Request IDs** for distributed tracing across requests
+- **Contextual metadata** included with each log entry
+- **Colorized console output** for development
+- **File logging** in production (errors + combined)
+
+**Log Levels:**
+- `error`: Error conditions requiring attention
+- `warn`: Warning conditions that should be monitored
+- `info`: Normal application flow (default)
+- `debug`: Detailed debugging information
+
+**Configuration:**
+Set the `LOG_LEVEL` environment variable to control logging verbosity:
+```bash
+LOG_LEVEL=debug npm run dev    # Show all logs including debug
+LOG_LEVEL=info npm start        # Production default
+LOG_LEVEL=error npm start       # Only errors
+```
+
+**Example log output:**
+```json
+{
+  "timestamp": "2026-01-30 10:30:15",
+  "level": "info",
+  "message": "LLM session created",
+  "conversationSid": "CHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "participantSid": "MBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "service": "conversation-relay",
+  "environment": "production"
+}
+```
+
+**Request Tracing:**
+Each HTTP request is assigned a unique `requestId` that's included in all logs for that request. This enables tracing a single request through the entire system:
+```
+X-Request-ID: 550e8400-e29b-41d4-a716-446655440000
+```
+
+### Webhook Security
+
+All Twilio webhook endpoints are protected with **signature verification** to prevent unauthorized requests.
+
+**How it works:**
+- Twilio sends an `X-Twilio-Signature` header with each webhook request
+- The middleware validates this signature using your Auth Token
+- Requests with invalid or missing signatures are rejected with 403 Forbidden
+
+**Protected endpoints:**
+- `/api/incoming-call` - Voice webhooks
+- `/api/call-status` - Call status updates
+- `/api/action` - Connect action webhooks
+- `/api/conversations/incoming-message` - Messaging webhooks
+- `/api/conversations/conversation-events` - Conversation events
+- `/api/conversations/message-status` - Message delivery receipts
+
+**Unprotected endpoints:**
+- `/health` and `/ready` - Health checks
+- `/api/outbound-call` - API endpoint (not a Twilio webhook)
+
+**Local development:**
+When using ngrok for local development, webhook validation is enabled by default. If you experience issues with ngrok URL changes, you can temporarily disable validation:
+
+```bash
+DISABLE_WEBHOOK_VALIDATION=true npm run dev
+```
+
+⚠️ **Never disable webhook validation in production** - it's a critical security feature.
+
+### Retry Logic
+
+All Twilio API calls are protected with **automatic retry logic** to handle transient failures.
+
+**Features:**
+- **Exponential backoff**: Delays increase between retries (1s → 2s → 4s → up to 10s max)
+- **Smart retry detection**: Only retries on recoverable errors (network issues, rate limits, 5xx errors)
+- **Configurable**: Default 3 retries, customizable per operation
+- **Full logging**: All retry attempts are logged with context
+
+**Retryable errors:**
+- Network errors: `ECONNRESET`, `ETIMEDOUT`, `ENOTFOUND`, `ECONNREFUSED`
+- HTTP errors: `429` (rate limit), `500`, `502`, `503`, `504`
+- Socket errors: Connection resets, timeouts
+
+**Protected operations:**
+- Fetching messages and participants
+- Creating conversation messages
+- Creating and managing calls
+- Initiating recordings
+- Sending welcome messages
+
+**Example log output:**
+```json
+{
+  "level": "warn",
+  "message": "Operation failed, retrying",
+  "operation": "send message to conversation",
+  "attempt": 1,
+  "maxRetries": 3,
+  "nextRetryIn": 1000,
+  "conversationSid": "CHxxxxx"
+}
+```
+
+**Non-retryable errors** (fail immediately):
+- Authentication errors (401)
+- Permission errors (403)
+- Not found errors (404)
+- Invalid request errors (400)
+
+### Coming Soon
+
+Additional production features being added:
+- Redis session storage for horizontal scaling
+- Graceful shutdown handling
+- Docker containerization
 
 ## License
 

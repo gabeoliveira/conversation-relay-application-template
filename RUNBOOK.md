@@ -518,6 +518,10 @@ When handoff occurs in messaging:
 
 ### Important URLs
 
+**Health Checks:**
+- **Health check:** `https://[your-ngrok-domain].ngrok.app/health`
+- **Readiness check:** `https://[your-ngrok-domain].ngrok.app/ready`
+
 **Voice:**
 - **Incoming call webhook:** `https://[your-ngrok-domain].ngrok.app/api/incoming-call`
 - **Action webhook:** `https://[your-ngrok-domain].ngrok.app/api/action`

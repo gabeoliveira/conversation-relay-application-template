@@ -3,6 +3,7 @@ import { OpenAIChatCompletionsService } from "./providers/openai-chat-completion
 import { OpenAIResponsesService } from "./providers/openai-responses";
 import { OpenAIAgentsService } from "./providers/openai-agents";
 import { config } from "../../config";
+import logger from "../../utils/logger";
 
 /**
  * Factory function to create the appropriate LLM service based on configuration
@@ -36,25 +37,24 @@ export function createLLMService(serviceConfig?: Partial<LLMServiceConfig>): Bas
 
   const apiKey = serviceConfig?.apiKey || config.openai.apiKey;
 
-  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`🏭 [LLM Factory] Creating LLM Service`);
-  console.log(`   Configured (env): ${configuredProvider || '(not set)'}`);
-  console.log(`   Requested (arg):  ${requestedProvider || '(not set)'}`);
-  console.log(`   ➡️  Selected:      ${provider}`);
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  logger.info('Creating LLM Service', {
+    configuredProvider: configuredProvider || '(not set)',
+    requestedProvider: requestedProvider || '(not set)',
+    selectedProvider: provider
+  });
 
   switch (provider) {
     case 'openai-responses':
-      console.log('[LLM Factory] Instantiating OpenAIResponsesService...');
+      logger.debug('Instantiating OpenAIResponsesService');
       return new OpenAIResponsesService(apiKey);
 
     case 'openai-agents':
-      console.log('[LLM Factory] Instantiating OpenAIAgentsService...');
+      logger.debug('Instantiating OpenAIAgentsService');
       return new OpenAIAgentsService(apiKey);
 
     case 'openai-chat-completions':
     default:
-      console.log('[LLM Factory] Instantiating OpenAIChatCompletionsService...');
+      logger.debug('Instantiating OpenAIChatCompletionsService');
       return new OpenAIChatCompletionsService(apiKey);
   }
 }

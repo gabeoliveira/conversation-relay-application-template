@@ -1,6 +1,8 @@
 import { CallDetails } from '../types';
 import { config } from '../config';
 import { Twilio } from 'twilio';
+import logger from '../utils/logger';
+import { withRetry } from '../utils/retry';
 
 // Twilio client
 const client = new Twilio(config.twilio.accountSid, config.twilio.authToken);
@@ -38,15 +40,19 @@ export async function handleIncomingCall(callData: CallDetails): Promise<string>
 
 export async function initiateRecording(callSid: string): Promise<void> {
   try {
-    await client.calls(callSid).recordings.create({
-      recordingStatusCallback: 'https://events.hookdeck.com/e/src_su8VnSes9EUDvIpR3fV01ywb/recordings',
-      recordingStatusCallbackMethod: 'POST',
-      recordingChannels: 'dual',
-      recordingTrack: 'both'
-    });
-    console.log(`Recording started for Call SID: ${callSid}`);
+    await withRetry(
+      () => client.calls(callSid).recordings.create({
+        recordingStatusCallback: 'https://events.hookdeck.com/e/src_su8VnSes9EUDvIpR3fV01ywb/recordings',
+        recordingStatusCallbackMethod: 'POST',
+        recordingChannels: 'dual',
+        recordingTrack: 'both'
+      }),
+      {},
+      { operation: 'initiate recording', callSid }
+    );
+    logger.info('Recording started', { callSid });
   } catch (error) {
-    console.error('Failed to initiate recording:', error);
+    logger.error('Failed to initiate recording', { error, callSid });
     throw error;
   }
 }
@@ -64,12 +70,11 @@ export interface OutboundCallResponse {
 }
 
 export async function makeOutboundCall(params: OutboundCallParams): Promise<OutboundCallResponse> {
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📞 [CallController] Initiating outbound call');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📲 To:', params.to);
-  console.log('📱 From:', config.twilio.phoneNumber);
-  console.log('📋 Custom Parameters:', params.customParameters ? JSON.stringify(params.customParameters, null, 2) : 'None provided');
+  logger.info('Initiating outbound call', {
+    to: params.to,
+    from: config.twilio.phoneNumber,
+    customParameters: params.customParameters
+  });
 
   try {
     // Create the TwiML URL endpoint with custom parameters
@@ -81,22 +86,27 @@ export async function makeOutboundCall(params: OutboundCallParams): Promise<Outb
       ? `?customParams=${encodeURIComponent(JSON.stringify(params.customParameters))}`
       : '';
 
-    console.log('🔗 TwiML URL:', twimlUrl + customParamsQuery);
+    logger.debug('Outbound call TwiML URL', { url: twimlUrl + customParamsQuery });
 
-    const call = await client.calls.create({
-      to: params.to,
-      from: config.twilio.phoneNumber,
-      url: twimlUrl + customParamsQuery,
-      method: 'POST',
-      statusCallback: `https://${config.ngrok.domain}/api/call-status`,
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-      statusCallbackMethod: 'POST'
+    const call = await withRetry(
+      () => client.calls.create({
+        to: params.to,
+        from: config.twilio.phoneNumber,
+        url: twimlUrl + customParamsQuery,
+        method: 'POST',
+        statusCallback: `https://${config.ngrok.domain}/api/call-status`,
+        statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+        statusCallbackMethod: 'POST'
+      }),
+      {},
+      { operation: 'create outbound call', to: params.to }
+    );
+
+    logger.info('Outbound call initiated successfully', {
+      callSid: call.sid,
+      status: call.status,
+      to: params.to
     });
-
-    console.log('✅ Call initiated successfully');
-    console.log('📞 Call SID:', call.sid);
-    console.log('📊 Status:', call.status);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     return {
       callSid: call.sid,
@@ -105,7 +115,7 @@ export async function makeOutboundCall(params: OutboundCallParams): Promise<Outb
       from: call.from
     };
   } catch (error) {
-    console.error('❌ Failed to initiate outbound call:', error);
+    logger.error('Failed to initiate outbound call', { error, to: params.to });
     throw error;
   }
 }
@@ -114,10 +124,9 @@ export async function generateOutboundCallTwiML(params: OutboundCallParams = { t
   // All configuration comes from environment variables/config
   // Only customParameters come from the API request
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📞 [CallController] Generating outbound call TwiML');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📋 Custom Parameters:', params.customParameters ? JSON.stringify(params.customParameters, null, 2) : 'None provided');
+  logger.debug('Generating outbound call TwiML', {
+    customParameters: params.customParameters
+  });
 
   // Build custom parameters XML
   let customParametersXml = '';
@@ -126,11 +135,10 @@ export async function generateOutboundCallTwiML(params: OutboundCallParams = { t
       .map(([name, value]) => `<Parameter name="${escapeXml(name)}" value="${escapeXml(value)}"/>`)
       .join('\n                      ');
 
-    console.log(`✅ Generated ${Object.keys(params.customParameters).length} TwiML <Parameter> element(s)`);
-  } else {
-    console.log('ℹ️  No custom parameters to include in TwiML');
+    logger.debug('Generated TwiML Parameter elements', {
+      count: Object.keys(params.customParameters).length
+    });
   }
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
           <Response>
